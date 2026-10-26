@@ -10,6 +10,8 @@
 #include "shader_prep.h"
 #include "game_timing.h"
 #include "settings.h"
+#include "services.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <unistd.h>
 
 static CAMetalLayer *metal_layer;
@@ -177,8 +179,30 @@ static void apply_vibration(int mode) {
 - (void)renderResolution:(NSMenuItem *)item { apply_render((int)item.tag); }
 - (void)togglePerformance:(id)sender { (void)sender; apply_performance(!performance_visible()); }
 - (void)toggleControls:(id)sender { (void)sender; controls_toggle(); }
+- (void)scanAmiibo:(id)sender {
+    (void)sender;
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.title = @"Scan amiibo";
+    panel.message = @"Activate amiibo in the game, then choose a raw amiibo .bin file.";
+    panel.allowedContentTypes = @[[UTType typeWithFilenameExtension:@"bin"] ?: UTTypeData];
+    panel.allowsMultipleSelection = NO; panel.canChooseDirectories = NO;
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
+        if (response != NSModalResponseOK) return;
+        char error[256];
+        if (!service_amiibo_load(panel.URL.fileSystemRepresentation, error, sizeof error)) {
+            NSAlert *alert = [NSAlert new]; alert.messageText = @"Could not scan amiibo";
+            alert.informativeText = @(error); [alert beginSheetModalForWindow:self.window completionHandler:nil];
+        } else if (!service_amiibo_delivered()) {
+            NSAlert *alert = [NSAlert new]; alert.messageText = @"amiibo file loaded — waiting for the game";
+            alert.informativeText = @"The game has not started scanning. Enable amiibo in the game's Options, select the amiibo ability, then activate it over an open area. This file will remain ready for the next scan.";
+            [alert beginSheetModalForWindow:self.window completionHandler:nil];
+        }
+    }];
+}
+- (void)removeAmiibo:(id)sender { (void)sender; service_amiibo_remove(); }
 - (void)quit:(id)sender { (void)sender; [self.window performClose:nil]; }
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
+    if (item.action == @selector(removeAmiibo:)) return service_amiibo_selected();
     if (item.action == @selector(targetFPS:)) {
         item.state = zelda_target_fps() == (unsigned)item.tag ? NSControlStateValueOn : NSControlStateValueOff;
         return zelda_target_fps() != 0;
@@ -233,7 +257,10 @@ static void install_menu(ZeldaMenu *actions) {
     NSMenuItem *scale = [[NSMenuItem alloc] initWithTitle:@"MetalFX Upscaling" action:nil keyEquivalent:@""]; scale.submenu = scales;
     [view addItem:scale];
     [view addItem:menu_item(@"Performance Overlay", @selector(togglePerformance:), @"p", NSEventModifierFlagCommand, actions)];
-    for (NSMenu *menu in @[app, view]) {
+    NSMenu *amiibo = [[NSMenu alloc] initWithTitle:@"amiibo"];
+    [amiibo addItem:menu_item(@"Scan amiibo File...", @selector(scanAmiibo:), @"a", NSEventModifierFlagCommand | NSEventModifierFlagShift, actions)];
+    [amiibo addItem:menu_item(@"Remove amiibo", @selector(removeAmiibo:), @"", 0, actions)];
+    for (NSMenu *menu in @[app, view, amiibo]) {
         NSMenuItem *holder = [[NSMenuItem alloc] initWithTitle:menu.title action:nil keyEquivalent:@""];
         holder.submenu = menu; [bar addItem:holder];
     }

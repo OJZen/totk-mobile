@@ -44,3 +44,13 @@ The overlay (⌘P) shows FPS and target, render size, CPU, GPU time and memory. 
 ## iPad
 
 Without a hardware controller, the system touch controller is shown; + and − at the top open the matching menus. The overlay shows FPS and target, render size, app CPU, GPU time and physical memory; tap its top edge to collapse it. Auto-lock is suspended while the game is in front. Settings live in the app's `Documents/work/settings.json`, separate from the Mac; there is no full settings panel on iOS yet.
+
+## amiibo (Mac, experimental)
+
+This feature currently has a macOS interface only. iPhone and iPad do not yet provide amiibo file selection or scanning controls; the shared service implementation alone does not enable scanning on iOS.
+
+Enable amiibo in the game's Options, then hold Q (controller L) to open the ability wheel, use I/J/K/L (right stick) to select amiibo, release Q and press it again to activate the ability. While the game is waiting for a scan, choose **amiibo > Scan amiibo File...** (Command-Shift-A) and select a raw NTAG215 `.bin` dump (532, 540 or 572 bytes). A file selected before detection begins is queued for the next scan. Choose **Remove amiibo** to remove the tag; select a file again for another scan.
+
+The virtual reader imports only the public UID and model information. It preserves the UID and leaves daily limits to the game. Original files are never written, and selections are not persisted between launches. It checks the file size, UID check bytes and public header, not the encrypted data's authenticity. Encrypted registration/application data, writing and physical NFC readers are not supported. Only ROM mounting is implemented; games requesting RAM receive an error. Scanning has been confirmed in game on the prepared v1.4.3 build; compatibility with every amiibo has not been verified.
+
+If a “waiting for the game” alert appears after selecting a file, the file loaded but the game has not begun scanning. Close the alert and activate the amiibo ability in game. NFC requests and results are recorded in `work/logs/native-probe.log`; `ZELDA_AMIIBO_TRACE=1` also logs state polling.

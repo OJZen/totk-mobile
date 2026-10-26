@@ -1,4 +1,5 @@
 #include "../host/services.h"
+#include "../host/amiibo_tag.h"
 #include "../host/kernel.h"
 #include "../host/audio.h"
 #include "../host/audio_voice.h"
@@ -33,6 +34,66 @@ static void domain(unsigned object, unsigned command) {
     message[0] = 6; message[1] = 10;
     message[4] = 0x100001; message[5] = object;
     message[8] = 0x49434653; message[10] = command;
+}
+static void nfp_command(unsigned command) {
+    cmif(4, command); message[1] = 12; message[8] = 1;
+}
+static void nfp_output(unsigned command, void *out, size_t size) {
+    nfp_command(command); message[1] |= 3 << 10;
+    uint64_t descriptor = (uintptr_t)out | ((uint64_t)size << 48);
+    memcpy(message + 14, &descriptor, 8);
+}
+static void check_amiibo(uint32_t service) {
+    // Entirely synthetic NTAG215: no user dump or keys are test fixtures.
+    uint8_t dump[572] = {4, 1, 2, 0x8f, 3, 4, 5, 6, 4};
+    memcpy(dump + 12, "\xf1\x10\xff\xee", 4);
+    const uint8_t model[] = {1, 2, 3, 0, 4, 5, 9, 2}; memcpy(dump + 0x54, model, 8);
+    amiibo_tag tag; assert(amiibo_tag_parse(dump, 540, &tag));
+    assert(tag.model[0] == 2 && tag.model[1] == 1 && tag.model[3] == 9 && tag.model[4] == 5 && tag.model[5] == 4);
+    assert(amiibo_tag_parse(dump, 532, &tag) && amiibo_tag_parse(dump, 572, &tag));
+    assert(!amiibo_tag_parse(dump, 539, &tag) && !amiibo_tag_parse(dump, 541, &tag));
+    dump[3] ^= 1; assert(!amiibo_tag_parse(dump, 540, &tag)); dump[3] ^= 1;
+    dump[0x5b] = 0; assert(!amiibo_tag_parse(dump, 540, &tag)); dump[0x5b] = 2;
+    char path[] = "work/tmp/amiibo-test-XXXXXX", error[256]; int fd = mkstemp(path); assert(fd >= 0);
+    assert(write(fd, dump, 540) == 540); close(fd);
+    nfp_command(17); assert(send(service) && !result && message[2] == 2); uint32_t activate = message[3];
+    nfp_command(18); assert(send(service) && !result); uint32_t deactivate = message[3];
+    nfp_command(3); assert(send(service) && !result && !message[6]);
+    nfp_command(20); assert(send(service) && !result && message[8] == 1);
+    assert(service_amiibo_load(path, error, sizeof error) && service_amiibo_selected());
+    uint64_t regs[31] = {0}; regs[1] = (uintptr_t)&activate; regs[2] = 1;
+    assert(kernel_svc(0x18, regs) && !regs[0]);
+    nfp_command(20); assert(send(service) && !result && message[8] == 2);
+    uint8_t output[0x100]; memset(output, 0xa5, sizeof output);
+    nfp_output(13, output, 0x58); assert(send(service) && !result && !message[6]);
+    assert(!memcmp(output, tag.uid, 7) && output[10] == 7 && output[0x20] == 1 && output[0x24] == 2 && output[0x58] == 0xa5);
+    nfp_output(16, output, 0x40); assert(send(service) && !result && message[6]); // Not mounted.
+    nfp_command(5); message[10] = 0; message[11] = 1; assert(send(service) && !result && !message[6]);
+    nfp_output(16, output, 0x40); assert(send(service) && !result && !message[6] && !memcmp(output, tag.model, 7));
+    memset(output, 0xa5, sizeof output);
+    nfp_output(16, output, 6); assert(send(service) && !result && message[6] && output[0] == 0xa5);
+    nfp_output(16, (void *)1, 0x40); assert(send(service) && result == 0xe601);
+    nfp_command(21); message[8] = 99; assert(send(service) && !result && message[6]);
+    assert(!service_amiibo_load("work/tmp/no-such-amiibo", error, sizeof error));
+    nfp_command(20); assert(send(service) && !result && message[8] == 4); // Failed load is atomic.
+    service_amiibo_remove(); assert(!service_amiibo_selected());
+    regs[0] = 0; regs[1] = (uintptr_t)&deactivate; regs[2] = 1; regs[3] = 0;
+    assert(kernel_svc(0x18, regs) && !regs[0]);
+    nfp_command(20); assert(send(service) && !result && message[8] == 3);
+    nfp_command(4); assert(send(service) && !result && !message[6]);
+    assert(service_amiibo_load(path, error, sizeof error));
+    nfp_command(3); assert(send(service) && !result && !message[6]); // Preselected tag is delivered.
+    nfp_command(20); assert(send(service) && !result && message[8] == 2);
+    nfp_command(4); assert(send(service) && !result);
+    nfp_command(3); assert(send(service) && !result);
+    nfp_command(20); assert(send(service) && !result && message[8] == 1); // No automatic repeat scan.
+    assert(service_amiibo_load(path, error, sizeof error));
+    nfp_command(20); assert(send(service) && !result && message[8] == 2);
+    nfp_command(5); message[11] = 2; assert(send(service) && !result && message[6]); // RAM unsupported.
+    service_amiibo_remove();
+    regs[0] = activate; assert(kernel_svc(0x16, regs) && !regs[0]);
+    regs[0] = deactivate; assert(kernel_svc(0x16, regs) && !regs[0]);
+    unlink(path);
 }
 static uint32_t connect_sm(void) {
     uint32_t handle; assert(service_connect("sm:", &handle)); return handle;
@@ -574,8 +635,9 @@ int main(void) {
     cmif(4, 2); message[1] |= 3 << 10;
     uint64_t readers_descriptor = (uintptr_t)readers | ((uint64_t)sizeof readers << 48);
     memcpy(message + 10, &readers_descriptor, 8);
-    assert(send(nfp_user) && !result && !message[8]);
-    for (unsigned i = 0; i < 10; i++) assert(readers[i] == 0xa5a5a5a5a5a5a5a5ull);
+    assert(send(nfp_user) && !result && message[8] == 1 && readers[0] == 1);
+    for (unsigned i = 1; i < 10; i++) assert(readers[i] == 0xa5a5a5a5a5a5a5a5ull);
+    check_amiibo(nfp_user);
     cmif(4, 23); assert(send(nfp_user) && !result); uint32_t nfp_event = message[3];
     regs[1] = (uintptr_t)&nfp_event; regs[2] = 1; regs[3] = 0; assert(kernel_svc(0x18, regs) && regs[0] == 0xea01);
     regs[0] = nfp_event; assert(kernel_svc(0x16, regs) && !regs[0]);

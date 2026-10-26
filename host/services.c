@@ -197,7 +197,9 @@ static uint32_t open_session(unsigned kind, struct service_context *shared) {
     return 0;
 }
 
+static void amiibo_close(unsigned value);
 static void close_object(unsigned kind, unsigned value, local_file *file) {
+    if (kind == NFP_USER) amiibo_close(value);
     if (kind == AUD_RENDERER) audio_close();
     filesystem_close(file);
     if (kind == SAVE_FS || kind == TEMP_FS || kind == CACHE_FS) filesystem_unmount(value);
@@ -258,6 +260,8 @@ static bool reply_status(uint8_t *bytes, size_t size, bool tipc, uint32_t token,
     memcpy(bytes + (tipc ? 8 : domain ? 40 : 24), &status, sizeof status);
     return true;
 }
+
+#include "amiibo_service.inc"
 
 static bool request(uint32_t handle, void *buffer, size_t size, uint32_t *result) {
     struct session *entry = session(handle);
@@ -344,7 +348,10 @@ static bool request(uint32_t handle, void *buffer, size_t size, uint32_t *result
                 kind_names[kind], command, pid, !!copied, !!transfer, data_size);
         return blocked("IPC unexpected copied handles");
     }
-    if (receive_length && (control || !((kind == LAUNCH_ACCESSOR && command == 11) || (kind == NFP_USER && command == 2) || (kind == TIME && command == 400)))) return blocked("IPC receive-static buffer for unsupported command");
+    if (!control && kind == NFP_USER && ((command != 19 && command != 20) || getenv("ZELDA_AMIIBO_TRACE")))
+        fprintf(stderr, "AMIIBO IPC command=%u initialized=%u X=%u A=%u B=%u C=%llu input=%zu\n",
+                command, *object_value != 0, statics, sends, receives, (unsigned long long)receive_length, data_size);
+    if (receive_length && (control || !((kind == LAUNCH_ACCESSOR && command == 11) || (kind == NFP_USER && (command == 2 || (command >= 13 && command <= 16))) || (kind == TIME && command == 400)))) return blocked("IPC receive-static buffer for unsupported command");
     if (!control && kind == AUD_DEVICE && getenv("ZELDA_IPC_LOG")) fprintf(stderr, "AUDIO device command=%u X=%u A=%u B=%u W=%u\n", command, statics, sends, receives, exchanges);
     if (!control && kind == LOGGER && command == 0 && statics <= 1 && sends <= 1 && !receives && !exchanges) {
         uint64_t address = 0, length = 0;
@@ -548,6 +555,45 @@ static bool request(uint32_t handle, void *buffer, size_t size, uint32_t *result
         else if (reply(bytes, size, tipc, token, 0, domain, 0, &count, command ? 0 : 8)) *result = 0;
         return true;
     }
+    // ClockSnapshot comparisons used by periodic benefits, including amiibo rewards.
+    if (!control && kind == TIME && (command == 500 || command == 501) &&
+        statics == 2 && !sends && !receives && !exchanges) {
+        uint8_t snapshots[2][0xd0];
+        for (unsigned i = 0; i < 2; i++) {
+            size_t at = descriptors + i * 8;
+            uint32_t d = word(bytes, at);
+            if ((d >> 16) != sizeof snapshots[i]) return true;
+            uint64_t address = word(bytes, at + 4) | ((uint64_t)((d >> 12) & 15) << 32) |
+                               ((uint64_t)((d >> 6) & 63) << 36);
+            mach_vm_size_t read_size = 0;
+            if (mach_vm_read_overwrite(mach_task_self(), address, sizeof snapshots[i],
+                                      (mach_vm_address_t)snapshots[i], &read_size) || read_size != sizeof snapshots[i]) {
+                *result = 0xe601; return true;
+            }
+        }
+        const uint8_t *a = snapshots[0], *b = snapshots[1];
+        uint32_t status = 0;
+        __int128 seconds = 0;
+        if (command == 501) {
+            if (!memcmp(a + 0x98, b + 0x98, 16))
+                seconds = (__int128)(int64_t)wide(b, 0x90) - (int64_t)wide(a, 0x90);
+            else if (wide(a, 0x48) && wide(b, 0x48))
+                seconds = (__int128)(int64_t)wide(b, 0x48) - (int64_t)wide(a, 0x48);
+            else status = (200 << 9) | 116; // TimeNotFound: no comparable clock.
+        } else if (!memcmp(a + 0x10, b + 0x10, 16)) {
+            // A manual wall-clock change is the change in context offset.
+            bool corrected = a[0xcc] && b[0xcc] &&
+                (!memcmp(a + 0x30, a + 0x98, 16) || !memcmp(b + 0x30, b + 0x98, 16));
+            if (!corrected) seconds = (__int128)(int64_t)wide(b, 0) - (int64_t)wide(a, 0);
+        }
+        __int128 ns = seconds * 1000000000;
+        if (ns > INT64_MAX || ns < INT64_MIN) status = (201 << 9) | 116;
+        int64_t span = status ? 0 : (int64_t)ns;
+        fprintf(stderr, "CLOCK comparison command=%u status=%x span_ns=%lld\n", command, status, (long long)span);
+        if (status) { if (reply_status(bytes, size, tipc, token, domain, status)) *result = 0; }
+        else if (reply(bytes, size, tipc, token, 0, domain, 0, &span, sizeof span)) *result = 0;
+        return true;
+    }
     if ((h0 >> 16) && !(kind == NFP_USER && !control && command == 0 && sends == 1 && !statics && !receives && !exchanges)) {
         snprintf(blocker, sizeof blocker, "%s buffers command=%u X=%u A=%u B=%u W=%u", kind_names[kind], command, statics, sends, receives, exchanges);
         return false;
@@ -630,22 +676,14 @@ static bool request(uint32_t handle, void *buffer, size_t size, uint32_t *result
     }
     if (!control && kind == LM && command == 0 && pid && data_size >= 8) open_kind = LOGGER;
     if (!control && kind == NFP && command == 0) open_kind = NFP_USER;
-    if (!control && kind == NFP_USER && command <= 1) {
-        if (!command) {
+    if (!control && kind == NFP_USER) {
+        if (command == 0) {
             if (!pid || data_size < 16 || sends != 1 || statics || receives || exchanges) return true;
             uint64_t address, length; mapped_buffer(bytes, descriptors, &address, &length);
             if (length > 4096 || address > UINT64_MAX - length) return true;
         }
-        *object_value = command == 0;
-        if (reply(bytes, size, tipc, token, 0, domain, 0, NULL, 0)) *result = 0;
-        return true;
-    }
-    if (!control && kind == NFP_USER && (command == 2 || command == 19)) {
-        // The local keyboard controller has no NFC reader, so enumeration is empty.
-        if (command == 2 && (receive_length > 80 || receive_length % 8)) return true;
-        uint32_t value = command == 2 ? 0 : *object_value;
-        if (reply(bytes, size, tipc, token, 0, domain, 0, &value, 4)) *result = 0;
-        return true;
+        return amiibo_request(object_value, command, bytes + payload, data_size,
+                              receive_address, receive_length, bytes, size, tipc, token, domain, result);
     }
     if (!control && kind == OPUS_MANAGER && (command == 1 || command == 5 || command == 8)) {
         if (data_size < 8) return true;

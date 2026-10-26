@@ -3,14 +3,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export PYTHONDONTWRITEBYTECODE=1
 mode=${1:-run}
-case "$mode" in run|--load-only|--debug|--codec-test|--font-test|--vibration-test|--time-test) ;; *) echo "usage: $0 [--load-only|--debug|--codec-test|--font-test|--vibration-test|--time-test]" >&2; exit 2;; esac
+case "$mode" in run|--load-only|--debug|--codec-test|--font-test|--vibration-test|--time-test|--amiibo-test) ;; *) echo "usage: $0 [--load-only|--debug|--codec-test|--font-test|--vibration-test|--time-test|--amiibo-test]" >&2; exit 2;; esac
 if [[ "$mode" == --font-test && ! -r "${ZELDA_FONT_MANIFEST:-work/font-audit/font-files.tsv}" ]]; then
     echo 'Run work/venv/bin/python script/font_audit.py first (or set ZELDA_FONT_MANIFEST)' >&2; exit 2
 fi
 test "$(uname -m)" = arm64 || { echo 'Apple silicon is required' >&2; exit 1; }
 test -f work/patched/main.patched.bin || { echo 'Run ./script/prepare.sh first' >&2; exit 1; }
 work/venv/bin/python tools/prepare_modules.py --check
-if [[ "$mode" != --codec-test && "$mode" != --font-test && "$mode" != --vibration-test && "$mode" != --time-test && "$mode" != --load-only && -z "${ZELDA_ROMFS:-}" ]]; then
+if [[ "$mode" != --codec-test && "$mode" != --font-test && "$mode" != --vibration-test && "$mode" != --time-test && "$mode" != --amiibo-test && "$mode" != --load-only && -z "${ZELDA_ROMFS:-}" ]]; then
     work/venv/bin/python script/prepare_render_resources.py
 fi
 mkdir -p work/build work/tmp work/logs
@@ -31,6 +31,10 @@ elif [[ "$mode" == --vibration-test ]]; then
     sources=(tests/test_vibration_sdk.c)
     binary=work/tmp/test_vibration_sdk
     trap 'rm -f work/tmp/test_vibration_sdk; rm -rf work/tmp/test_vibration_sdk.dSYM' EXIT
+elif [[ "$mode" == --amiibo-test ]]; then
+    sources=(tests/test_amiibo_sdk.c)
+    binary=work/tmp/test_amiibo_sdk
+    trap 'rm -f work/tmp/test_amiibo_sdk; rm -rf work/tmp/test_amiibo_sdk.dSYM' EXIT
 elif [[ "$mode" == --time-test ]]; then
     sources=(tests/test_time_sdk.c)
     binary=work/tmp/test_time_sdk
@@ -49,7 +53,7 @@ clang -O2 -g -Wall -Wextra -Wno-deprecated-declarations -fobjc-arc \
     -framework Cocoa -framework QuartzCore -framework CoreVideo -framework Metal -framework MetalFX -framework ImageIO -framework UniformTypeIdentifiers -framework AudioToolbox -framework GameController -framework CoreHaptics \
     $(pkg-config --libs opus vpx) \
     -o "$binary" > work/logs/build.log 2>&1 || { tail -60 work/logs/build.log; exit 1; }
-if [[ "$mode" == --codec-test || "$mode" == --vibration-test || "$mode" == --time-test ]]; then
+if [[ "$mode" == --codec-test || "$mode" == --vibration-test || "$mode" == --time-test || "$mode" == --amiibo-test ]]; then
     "$binary" work/patched
     exit
 elif [[ "$mode" == --font-test ]]; then

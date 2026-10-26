@@ -35,6 +35,30 @@ int main(int argc, char **argv) {
     assert(calendar[4] == local.tm_hour && calendar[5] == local.tm_min && calendar[6] == local.tm_sec && offset == local.tm_gmtoff);
     create_snapshot(snapshot); memcpy(&stamp, snapshot + 0x40, 8);
     assert(llabs(stamp - time(NULL)) <= 1);
+    bool (*span_between)(int64_t *, const void *, const void *) = guest_sym(
+        "_ZN2nn4time20CalculateSpanBetweenEPNS_8TimeSpanERKNS0_13ClockSnapshotES5_");
+    int64_t (*manual_difference)(const void *, const void *) = guest_sym(
+        "_ZN2nn4time48CalculateStandardUserSystemClockDifferenceByUserERKNS0_13ClockSnapshotES3_");
+    assert(span_between && manual_difference);
+    uint8_t later[0xd0]; memcpy(later, snapshot, sizeof later);
+    int64_t span = -1, later_steady; memcpy(&later_steady, snapshot + 0x90, 8);
+    later_steady += 86400; memcpy(later + 0x90, &later_steady, 8);
+    assert(span_between(&span, snapshot, later) && span == 86400000000000LL);
+    assert(span_between(&span, later, snapshot) && span == -86400000000000LL);
+    assert(span_between(&span, snapshot, snapshot) && span == 0);
+    assert(manual_difference(snapshot, later) == 0);
+    int64_t changed_offset; memcpy(&changed_offset, later, 8); changed_offset += 3600;
+    memcpy(later, &changed_offset, 8);
+    assert(manual_difference(snapshot, later) == 3600000000000LL);
+    later[0x98] ^= 1; // Different boot: use network timestamps.
+    int64_t network; memcpy(&network, snapshot + 0x48, 8); network += 120;
+    memcpy(later + 0x48, &network, 8);
+    assert(span_between(&span, snapshot, later) && span == 120000000000LL);
+    memset(later + 0x48, 0, 8);
+    assert(!span_between(&span, snapshot, later));
+    memcpy(later, snapshot, sizeof later); later_steady = INT64_MAX;
+    memcpy(later + 0x90, &later_steady, 8);
+    assert(!span_between(&span, snapshot, later));
     alarm(0);
-    puts("Real SDK user/network clocks, local calendar and save clock snapshot passed; no save written");
+    puts("Real SDK user/network clocks, local calendar, snapshots and amiibo clock comparisons passed; no save written");
 }

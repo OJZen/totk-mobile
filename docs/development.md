@@ -25,7 +25,7 @@ Quit the game before building. Builds, the full test suite and runtime shader co
 | Install the test dependencies | `work/venv/bin/python -m pip install --no-cache-dir -r requirements/test.txt` |
 | Full Python, native and Metal suite | `./script/test.sh` |
 | Build and check loading only | `./script/build_and_run.sh --load-only` |
-| Real SDK clock, audio, font and rumble paths | `./script/build_and_run.sh --time-test` (also `--codec-test`, `--font-test`, `--vibration-test`) |
+| Real SDK clock, audio, font, rumble and amiibo paths | `./script/build_and_run.sh --time-test` (also `--codec-test`, `--font-test`, `--vibration-test`, `--amiibo-test`) |
 
 Run the checks related to your change first; run the native and Metal suites when you touch shared graphics, loading or threading. The full `test.sh` needs the prepared local environment and a Metal device, so it is not a resource-free CI job. The complete build log is `work/logs/build.log`.
 

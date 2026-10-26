@@ -13,7 +13,7 @@ The project is under active development. You can load a save and play, but a ful
 
 | Platform | Working | Known limits |
 | --- | --- | --- |
-| Apple silicon Mac | Loading saves and playing scenes, keyboard and Xbox controller (with rumble), audio, cutscenes, 30 / 60 / 90 FPS targets | The first visit to a new area or camera angle may stutter while shaders compile; not every area holds 60 FPS |
+| Apple silicon Mac | Loading saves and playing scenes, keyboard and Xbox controller (with rumble), audio, cutscenes, amiibo file scanning (experimental), 30 / 60 / 90 FPS targets | The first visit to a new area or camera angle may stutter while shaders compile; not every area holds 60 FPS |
 | iPad (M1 or newer) | Development-signed install, resource import, loading saves, touch controller, camera, audio | Well below 60 FPS at the original resolution; the first shader preparation takes a long time; hardware controllers are not fully validated |
 | iPhone 15 Pro | Development-signed install, resource import, verified offline shader libraries, warm launch to the title screen | Gameplay, frame rate, memory and thermals have not been measured; no other iPhone has been tried, and chips without BC texture support (before A17 Pro) are untested |
 
@@ -46,6 +46,8 @@ mkdir -p local/games local/keys
 After that, start the game by double-clicking `launch.command` (or running it in a terminal). `quick-load.command` additionally walks the in-game menu and loads the first entry of the save list.
 
 The first launch prepares tens of thousands of shaders. This can take several minutes or longer; the startup screen shows each stage and its progress. Later launches reuse the cache.
+
+amiibo file scanning is currently available only on macOS. iPhone and iPad have no amiibo file picker or scan controls yet, and scanning has not been validated on iOS. Physical NFC readers are not supported. See [amiibo controls and limitations](docs/controls.md#amiibo-mac-experimental).
 
 ## Controls
 
