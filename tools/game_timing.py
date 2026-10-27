@@ -19,6 +19,9 @@ ORIGINAL = {
     0x2b36100: 'b6f37097', 0x2b33918: 'de170214',
     0x1fbc80: '0820201e0a04081f',
     0x68c15c: '693e40bd',  # World clock increment, independently verified against this build.
+    # Player Fuse timer update and the strict-positive equipment restriction check.
+    0x2b0368: '609e50bd8166010f0020211ee8260154',
+    0x31cc84: '0820201e4c0d0054',
 }
 
 
@@ -80,6 +83,13 @@ def apply_timing(env):
                          (0x2daa6c, 0xd503201f), (0x3e5638, 0xd503201f)):
         replace(offset, [word], 'consume fractional FPS instead of integer conversion')
     replace(0xbe14a8, [0x52800021], 'allow three swapchain buffers without changing dimensions')
+
+    # ExecutePlayerOneTouchBond initializes the weapon/shield timer to (5, 5, -1).
+    # At 90 FPS, float32 subtraction can leave 2^-24: below the old update
+    # threshold (2^-23), but still positive to the restriction at 0x31cc84.
+    # Continue this timer until <= 0; keep the original update and state checks.
+    replace(0x2b036c, [0x0f000401],  # movi v1.2s,#0
+            'let the Fuse equipment timer expire at fractional frame steps')
 
     for name, site, target, store in (
         ('movie_enter', 0x2b36100, 0x772fd8, 0x39002230),
