@@ -123,6 +123,10 @@ clang -Wall -Wextra -Werror -fobjc-arc -ivfsoverlay work/build/graphics-overlay.
     -I "$PWD/core/gfx/nvn" -I "$PWD/core/gfx/nvn/include" tests/test_nvn_depth.m host/performance.c \
     -framework Foundation -framework Metal -o work/tmp/test_nvn_depth
 MTL_DEBUG_LAYER=1 work/tmp/test_nvn_depth
+clang -Wall -Wextra -Werror -fobjc-arc tests/test_nvn_depth_unorm.m \
+    -framework Foundation -framework Metal -o work/tmp/test_nvn_depth_unorm
+MTL_DEBUG_LAYER=1 work/tmp/test_nvn_depth_unorm
+rm -f work/tmp/test_nvn_depth_unorm
 clang -Wall -Wextra -Werror -fobjc-arc tests/test_nvn_profile.m -framework Foundation -framework Metal -o work/tmp/test_nvn_profile
 MTL_DEBUG_LAYER=1 work/tmp/test_nvn_profile work/tmp/test_nvn_profile.tsv
 clang -Wall -Wextra -Werror -fobjc-arc -ivfsoverlay work/build/graphics-overlay.json \

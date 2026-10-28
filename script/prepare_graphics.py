@@ -1051,6 +1051,16 @@ static void bind_args(id<MTLCommandEncoder> en, int nvn_stage, int metal_vertex,
     if shader_builds != 20:
         raise ValueError('NVN shader compilation call sites changed')
     source = '#include "timeline.h"\n#include "shader_status.h"\n' + source
+    depth_clear = 'pd.depthAttachment.clearDepth = R.cd;'
+    texture_clear = 'rp.depthAttachment.clearDepth = c->c.f[0];'
+    if source.count(depth_clear) != 1 or source.count(texture_clear) != 1:
+        raise ValueError('NVN depth clear conversion anchors changed')
+    source = source.replace(depth_clear,
+                            'pd.depthAttachment.clearDepth = zelda_depth_clear_value(pd.depthAttachment.texture.pixelFormat, R.cd);')
+    source = source.replace(texture_clear,
+                            'rp.depthAttachment.clearDepth = zelda_depth_clear_value(rp.depthAttachment.texture.pixelFormat, c->c.f[0]);')
+    source = source.replace('static void attach(MTLRenderPassAttachmentDescriptor *a,',
+                            '#include "nvn_depth_unorm.h"\nstatic void attach(MTLRenderPassAttachmentDescriptor *a,')
     start = source.index('static inline void enc_r_viewport(')
     end = source.index('static inline void enc_r_visibility(', start)
     source = source[:start] + source[end:]
