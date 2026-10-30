@@ -78,7 +78,7 @@ PYTHONDONTWRITEBYTECODE=1 TMPDIR="$PWD/work/tmp/" \
 
 同一个应用同时支持 iPhone 和 iPad，架构为 arm64，最低部署版本为 iOS / iPadOS 26。构建时不需要连接设备；安装时开发签名的描述文件必须包含目标设备，新设备需要先在 Xcode 注册并更新签名。
 
-先在 Mac 上完成准备（资源、模块、MSL、渲染堆）。设备上不运行 Python 着色器翻译器，新的客体着色器请求需要回到 Mac 翻译。
+先在 Mac 上完成准备（资源、模块、MSL、渲染堆，以及 `./script/prepare_shader_tools.sh`）。构建会链接设备端着色器编译器（构建过程中运行 `script/prepare_runtime_shaders.sh`），新的着色器请求在设备上翻译，不需要 Mac。`ios.sh transfer shaders` 也会传送翻译所需的着色器索引与代码。
 
 ```sh
 # 使用你自己的团队和设备标识，不要写进源码。

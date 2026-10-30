@@ -13,7 +13,8 @@ static void zelda_capture_shader(const NVNshaderData *shader) {
     if (!zelda_shader_hash(shader->control, code, hash)) return;
     char key[17], path[96];
     for (unsigned i = 0; i < 8; i++) snprintf(key + 2 * i, 3, "%02x", hash[i]);
-    snprintf(path, sizeof path, "work/shaders/spv/%s.spv", key);
+    // Indexed shaders keep their code; iOS has no SPIR-V of the prepared set.
+    snprintf(path, sizeof path, "work/shaders/code/%s.bin", key);
     if (!access(path, F_OK)) return;
     snprintf(path, sizeof path, "work/shaders/source/runtime-%s.nvn", key);
     if (!access(path, F_OK)) return;

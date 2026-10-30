@@ -92,4 +92,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 `script/build_ios_deps.sh` 为真机交叉编译 Opus 1.6.1 和 libvpx 1.17.0，固定源码归档 SHA-256；源码与许可证保留在 `work/ios/deps/`，不链接 macOS 的 Homebrew 二进制。
 
+iOS 应用链接 `script/prepare_runtime_shaders.sh` 构建的设备端着色器编译器：上文所述的 `dmsh_xlate` 前端与 Ryujinx 着色器翻译子集（MIT）、`Microsoft.NETCore.App.Runtime.NativeAOT.ios-arm64` 包中的 .NET NativeAOT 运行时（MIT，`Copyright (c) .NET Foundation and Contributors`；许可证与第三方声明随该包保留在 `work/tools/nuget/`），以及与上文同一提交的 SPIRV-Cross，包括其命令行 `main.cpp`（Apache 2.0；许可证在 `work/ios/deps/SPIRV-Cross/LICENSE`）。
+
 Mac 端 `script/ios_transfer.py` 使用 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) 11.34.1 的 USB / House Arrest / AFC 接口，包元数据声明 `GPL-3.0-or-later`；许可证随独立虚拟环境的安装包保留。它只用于开发机传输，不链接进 iOS 应用。
