@@ -58,6 +58,8 @@ work/venv/bin/python tools/prepare_modules.py --check
 | `ZELDA_DAY_RATE` | 缩放游戏内昼夜时钟（0–16，0 为暂停），不影响帧率与物理 |
 | `ZELDA_WINDOW_POINTS` | 窗口尺寸，例如 `1600x900` |
 | `ZELDA_RENDER_SCALE` | 实验性渲染倍率（0.5–2），正常游玩时请清除 |
+| `ZELDA_SHADER_ASYNC=0\|1`、`ZELDA_SHADER_ASYNC_BUDGET_MS` | 本次运行覆盖 Shaders 设置（1 = 后台，0 = 等待）；后台管线每帧最多等待的毫秒数，超过后先跳过对应绘制（默认 3） |
+| `ZELDA_PSO_LOG=1` | 诊断：列出绘制时新建的每条管线与着色器库，以及超过 5 ms 的后台准备步骤 |
 | `ZELDA_THREAD_CPU=1`、`ZELDA_IPC_LOG=1` | 诊断：逐线程 CPU 统计写入 `work/logs/threads.tsv`；IPC 日志 |
 
 另有许多 `ZELDA_*` 和 `DM_*` 开关用于单项优化的 A/B 对照，默认值即已验证的行为；使用前请在 `host/` 中搜索 `getenv` 确认含义。
@@ -70,7 +72,7 @@ work/venv/bin/python tools/prepare_modules.py --check
 
 ## 基本原则
 
-- **原画质、正常速度。** 优化不得降低分辨率、删减效果、跳过绘制或加速游戏。不能通过关闭校验或伪造成功值让测试通过。
+- **原画质、正常速度。** 优化不得降低分辨率、删减效果、跳过绘制或加速游戏。唯一的例外是玩家可选的 Shaders 设置（`host/shader_async.h`）：在 Background 模式下，绘制只在第一次用到的着色器或管线准备好之前被跳过。不能通过关闭校验或伪造成功值让测试通过。
 - 源码、注释、界面文本、日志和文件名使用英文。文档以英文为主，并同步维护简体中文版本（`*.zh-CN.md`）。必要的非 ASCII 上游匹配串和 Unicode 测试字符用转义表示，`tests/test_repository.py` 会检查。
 - 修改 `host/`、`ios/`、`script/`、`tools/` 中的源码，不要修改 `work/build` 中的生成文件。除非按上述步骤操作，否则保持 `core/` 不变。
 - 不要提交游戏文件、密钥、存档、日志或构建产物。`local/` 和 `work/` 已被忽略，见 [仓库结构](repository.zh-CN.md)。不要在已准备好的检出里运行 `git clean`，它会删除你的本地数据。

@@ -53,6 +53,8 @@ static id<MTLFunction> zelda_shader_variant(NvShader *shader, unsigned mask, int
     }
     NSString *name = [key stringByAppendingString:@"_b"];
     NSString *library = [g_msl_dir stringByAppendingPathComponent:[name stringByAppendingString:@".metallib"]];
+    int background = zelda_shader_background();
+    if (background && zelda_variant_busy(name)) return nil;
     if (![NSFileManager.defaultManager fileExistsAtPath:library]) {
         if (z_warming) return nil;
         NSString *directory = @"work/shaders/variants";
@@ -62,6 +64,7 @@ static id<MTLFunction> zelda_shader_variant(NvShader *shader, unsigned mask, int
         NSString *path = [directory stringByAppendingPathComponent:[key stringByAppendingString:@".json"]];
         if (!data || ![data writeToFile:path options:NSDataWritingAtomic error:nil]) MDIE("Cannot save shader variant");
         MLOG("Captured Zelda %s variant %s batch=%d", stage == 0 ? "vertex" : "fragment", key.UTF8String, z_variant_collect);
+        if (background) { zelda_variant_request(name); return nil; }
         z_variant_missing = 1;
         if (z_variant_collect) return nil;
         // A later miss can lie beyond this submit's earlier precompile scan.
@@ -72,7 +75,9 @@ static id<MTLFunction> zelda_shader_variant(NvShader *shader, unsigned mask, int
         }
         z_variant_missing = 0;
     }
-    NvShader *variant = shader_get(name, stage);
+    int pending = 0;
+    NvShader *variant = background ? zelda_variant_load(name, stage, &pending) : shader_get(name, stage);
+    if (pending) return nil;
     if (!variant || variant->rf.nb != shader->rf.nb || variant->rf.abi != shader->rf.abi ||
         variant->arg_len != shader->arg_len || variant->rf.c1_len != shader->rf.c1_len ||
         memcmp(variant->rf.b, shader->rf.b, shader->rf.nb * sizeof(nvn_rbind)) ||

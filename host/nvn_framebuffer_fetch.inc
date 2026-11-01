@@ -171,14 +171,8 @@ static NSSet<NSNumber *> *zelda_fetch_screen_outputs(NvShader *shader) {
     if (!outputs) cache[key] = outputs = zelda_fetch_screen_outputs_in(zelda_fetch_shader_text(shader));
     return outputs;
 }
-static NvShader *zelda_fetch_shader(NvShader *base, NSDictionary<NSString *, NSNumber *> *mapping, NSString *identity) {
-    static NSMutableDictionary<NSString *, id> *cache;
-    if (!cache) cache = [NSMutableDictionary dictionary];
-    NSString *key = [NSString stringWithFormat:@"%s|%@", base->key, identity];
-    id cached = cache[key];
-    if (cached) return cached == NSNull.null ? nil : cached;
-    uint64_t started = bp_now();
-    cache[key] = NSNull.null;
+// Builds a variant's shader object from the base shader alone, so it may run on a worker thread.
+static NvShader *zelda_fetch_build(NvShader *base, NSDictionary<NSString *, NSNumber *> *mapping, NSString *identity) {
     NSString *source = zelda_fetch_source(zelda_fetch_shader_text(base), mapping);
     if (!source) { MLOG("ERROR: Framebuffer-fetch variant rewrite failed %s (%s)", base->key, identity.UTF8String); return nil; }
     MTLCompileOptions *options = nil; NSString *text = source; source = zelda_shader_math(source, &options); NSError *error = nil;
@@ -195,14 +189,52 @@ static NvShader *zelda_fetch_shader(NvShader *base, NSDictionary<NSString *, NSN
     shader->z_fetch_identity = identity;
     shader->c1buf = base->c1buf; shader->c1_gpu = base->c1_gpu; shader->c1off = base->c1off;
     strlcpy(shader->key, base->key, sizeof shader->key);
-    cache[key] = shader; z_fetch_variants++;
-    uint64_t elapsed = bp_now() - started;
+    return shader;
+}
+// With `pending` and background preparation on (shader_async.h), a variant not built yet compiles on a worker thread:
+// *pending is set and the draw keeps its texture reads until a later draw finds the variant ready.
+static pthread_mutex_t z_fetch_mu = PTHREAD_MUTEX_INITIALIZER;
+static NSMutableDictionary<NSString *, NSArray *> *z_fetch_built;   // key -> @[shader or NSNull, build ns], from workers
+static NvShader *zelda_fetch_shader_ready(NvShader *base, NSDictionary<NSString *, NSNumber *> *mapping, NSString *identity, int *pending) {
+    static NSMutableDictionary<NSString *, id> *cache;
+    if (!cache) cache = [NSMutableDictionary dictionary];
+    NSString *key = [NSString stringWithFormat:@"%s|%@", base->key, identity];
+    id cached = cache[key];
+    NvShader *shader = nil; uint64_t elapsed = 0; int background = 0;
+    if ([cached isEqual:@YES]) {
+        pthread_mutex_lock(&z_fetch_mu); NSArray *built = z_fetch_built[key]; [z_fetch_built removeObjectForKey:key]; pthread_mutex_unlock(&z_fetch_mu);
+        if (!built) { *pending = 1; return nil; }
+        shader = built[0] == NSNull.null ? nil : built[0]; elapsed = [built[1] unsignedLongLongValue]; background = 1;
+    } else if (cached) return cached == NSNull.null ? nil : cached;
+    else if (pending && zelda_shader_background()) {
+        cache[key] = @YES; *pending = 1;
+        NSDictionary<NSString *, NSNumber *> *frozen = [mapping copy];
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            uint64_t started = bp_now(); NvShader *made = zelda_fetch_build(base, frozen, identity);
+            NSArray *built = @[made ?: (id)NSNull.null, @(bp_now() - started)];
+            pthread_mutex_lock(&z_fetch_mu);
+            if (!z_fetch_built) z_fetch_built = [NSMutableDictionary dictionary];
+            z_fetch_built[key] = built;
+            pthread_mutex_unlock(&z_fetch_mu);
+        });
+        return nil;
+    } else {
+        uint64_t started = bp_now();
+        cache[key] = NSNull.null;
+        shader = zelda_fetch_build(base, mapping, identity); elapsed = bp_now() - started;
+    }
+    cache[key] = shader ?: (id)NSNull.null;
+    if (!shader) return nil;
+    z_fetch_variants++;
     if (!z_warming) {
-        g_bp_lib_n++; g_bp_lib_ns += elapsed;
+        if (!background) { g_bp_lib_n++; g_bp_lib_ns += elapsed; }
         pso_user_record("V\t%s\t%s\n", base->key, identity.UTF8String);
     }
-    MLOG("Framebuffer-fetch variant: %s attachments=%s build_ms=%.1f", base->key, identity.UTF8String, elapsed / 1e6);
+    MLOG("Framebuffer-fetch variant: %s attachments=%s build_ms=%.1f%s", base->key, identity.UTF8String, elapsed / 1e6, background ? " (background)" : "");
     return shader;
+}
+static NvShader *zelda_fetch_shader(NvShader *base, NSDictionary<NSString *, NSNumber *> *mapping, NSString *identity) {
+    return zelda_fetch_shader_ready(base, mapping, identity, NULL);
 }
 static int zelda_fetch_subresource(const treg_t *bound, unsigned k, unsigned components) {
     const tex_t *a = R.rt.color[k], *t = &bound->t;
@@ -268,7 +300,9 @@ static NvProg *zelda_fetch_prepare(NvProg *pr, unsigned written, unsigned *fetch
     id cached = pr->z_fetch[mapping];
     if (!cached) {
         NSString *identity = zelda_fetch_record_identity(mapping);
-        NvShader *shader = zelda_fetch_shader(fs, mapping, identity);
+        int pending = 0;
+        NvShader *shader = zelda_fetch_shader_ready(fs, mapping, identity, &pending);
+        if (pending) { *fetched = 0; return pr; }
         NvProg *variant = nil;
         if (shader) { variant = [NvProg new]; for (int i = 0; i < 6; i++) variant->sh[i] = pr->sh[i]; variant->sh[1] = shader; }
         pr->z_fetch[mapping] = cached = variant ?: (id)NSNull.null;

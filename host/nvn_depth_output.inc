@@ -35,27 +35,56 @@ static NSString *zelda_function_text(id<MTLFunction> function) {
 static os_unfair_lock z_depthless_lock = OS_UNFAIR_LOCK_INIT;
 static NSMapTable *z_depthless;   // function -> depth-free copy, or NSNull when it writes no depth
 static uint64_t z_depthless_functions;
+// The depth-free copy of a function, or NSNull when it writes no depth. Takes no lock: compiles may run in parallel.
+static id zelda_depthless_make(id<MTLFunction> function, NvShader *shader) {
+    NSString *text = zelda_function_text(function);
+    if (!text || [text rangeOfString:@"[[depth("].location == NSNotFound) return NSNull.null;
+    NSString *source = zelda_depthless_source(text);
+    if (!source) MDIE("Depth output of fragment shader %s could not be removed", shader ? shader->key : "?");
+    MTLCompileOptions *options = nil; source = zelda_shader_math(source, &options); NSError *error = nil;
+    id<MTLLibrary> library = ZELDA_SHADER_BUILD([g_dev newLibraryWithSource:source options:options error:&error]);
+    id<MTLFunction> copy = library ? [library newFunctionWithName:function.name] : nil;
+    if (!copy) MDIE("Depth-free fragment shader %s failed: %s", shader ? shader->key : "?", error.localizedDescription.UTF8String);
+    copy.label = [NSString stringWithFormat:@"%@ depthless", function.label ?: function.name];
+    if (shader && shader->rf.nb && [copy newArgumentEncoderWithBufferIndex:shader->rf.abi].encodedLength != shader->arg_len)
+        MDIE("Depth-free fragment shader changed the argument buffer layout");
+    return copy;
+}
+// Called with z_depthless_lock held.
+static void zelda_depthless_store(id<MTLFunction> function, NvShader *shader, id made) {
+    if (made != NSNull.null) {
+        z_depthless_functions++;
+        MLOG("Depthless pass: removed depth output from fragment shader %s (variant %llu)", shader ? shader->key : "?", z_depthless_functions);
+    }
+    [z_depthless setObject:made forKey:function];
+}
 static id zelda_depthless_lookup(id<MTLFunction> function, NvShader *shader) {
     if (!z_depthless) z_depthless = [NSMapTable strongToStrongObjectsMapTable];
     id cached = [z_depthless objectForKey:function];
     if (cached) return cached;
-    NSString *text = zelda_function_text(function);
-    cached = NSNull.null;
-    if (text && [text rangeOfString:@"[[depth("].location != NSNotFound) {
-        NSString *source = zelda_depthless_source(text);
-        if (!source) MDIE("Depth output of fragment shader %s could not be removed", shader ? shader->key : "?");
-        MTLCompileOptions *options = nil; source = zelda_shader_math(source, &options); NSError *error = nil;
-        id<MTLLibrary> library = ZELDA_SHADER_BUILD([g_dev newLibraryWithSource:source options:options error:&error]);
-        id<MTLFunction> copy = library ? [library newFunctionWithName:function.name] : nil;
-        if (!copy) MDIE("Depth-free fragment shader %s failed: %s", shader ? shader->key : "?", error.localizedDescription.UTF8String);
-        copy.label = [NSString stringWithFormat:@"%@ depthless", function.label ?: function.name];
-        if (shader && shader->rf.nb && [copy newArgumentEncoderWithBufferIndex:shader->rf.abi].encodedLength != shader->arg_len)
-            MDIE("Depth-free fragment shader changed the argument buffer layout");
-        cached = copy; z_depthless_functions++;
-        MLOG("Depthless pass: removed depth output from fragment shader %s (variant %llu)", shader ? shader->key : "?", z_depthless_functions);
-    }
-    [z_depthless setObject:cached forKey:function];
+    cached = zelda_depthless_make(function, shader);
+    zelda_depthless_store(function, shader, cached);
     return cached;
+}
+// Background preparation (shader_async.h): whether the depth-free copy is known, starting its compile if not.
+static NSHashTable *z_depthless_pending;
+static int zelda_depthless_ready(id<MTLFunction> function, NvShader *shader) {
+    if (!function) return 1;
+    os_unfair_lock_lock(&z_depthless_lock);
+    if (!z_depthless) z_depthless = [NSMapTable strongToStrongObjectsMapTable];
+    if (!z_depthless_pending) z_depthless_pending = [NSHashTable hashTableWithOptions:NSPointerFunctionsObjectPointerPersonality];
+    int known = [z_depthless objectForKey:function] != nil, started = [z_depthless_pending containsObject:function];
+    if (!known && !started) [z_depthless_pending addObject:function];
+    os_unfair_lock_unlock(&z_depthless_lock);
+    if (known || started) return known;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        id made = zelda_depthless_make(function, shader);
+        os_unfair_lock_lock(&z_depthless_lock);
+        if (![z_depthless objectForKey:function]) zelda_depthless_store(function, shader, made);
+        [z_depthless_pending removeObject:function];
+        os_unfair_lock_unlock(&z_depthless_lock);
+    });
+    return 0;
 }
 static int zelda_function_writes_depth(id<MTLFunction> function, NvShader *shader) {
     if (!function) return 0;

@@ -953,6 +953,12 @@ typedef struct { nvn_refl rf; char key[32]; id<MTLFunction> fn; NSUInteger arg_l
 static NSString *g_msl_dir = @"missing-libraries";
 static NvShader *shader_get(NSString *name, int stage) { (void)name; (void)stage; assert(!"unexpected library load"); return NULL; }
 static void zelda_compile_shaders(void) {}
+static int test_background;
+static NSMutableArray<NSString *> *test_requests;
+static int zelda_shader_background(void) { return test_background; }
+static int zelda_variant_busy(NSString *name) { return [test_requests containsObject:name]; }
+static void zelda_variant_request(NSString *name) { [test_requests addObject:name]; }
+static NvShader *zelda_variant_load(NSString *name, int stage, int *pending) { (void)name; (void)stage; *pending = 1; return NULL; }
 ''' + formats + variants + '''
 static void pso_predict_rest(void) {
     assert(z_variant_missing && !z_variant_collect);
@@ -1005,6 +1011,12 @@ int main(int argc, char **argv) {
     z_warming = 0; attributes[2].fmt = 0x2a;
     shader.z_wide_line = 1;
     assert(zelda_vertex_function(&shader, attributes, &fragment) == shader.fn);
+    // Background preparation: a missing variant is requested once and its draws wait without compiling in the frame.
+    shader.z_wide_line = 0; test_background = 1; test_requests = [NSMutableArray array]; z_variant_missing = 0;
+    attributes[2].fmt = 0x2f;
+    assert(!zelda_vertex_function(&shader, attributes, NULL) && !z_variant_missing && test_requests.count == 1);
+    assert(!zelda_vertex_function(&shader, attributes, NULL) && test_requests.count == 1);
+    assert([test_requests[0] isEqual:@"0123456789abcdef-00000001_b"]);
 
 }
 '''

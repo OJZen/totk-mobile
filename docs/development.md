@@ -58,6 +58,8 @@ Software checks cannot replace hands-on checks: what is visible on screen, what 
 | `ZELDA_DAY_RATE` | Scale the in-game day/night clock (0–16, 0 pauses it). Frame rate and physics are unaffected |
 | `ZELDA_WINDOW_POINTS` | Window size such as `1600x900` |
 | `ZELDA_RENDER_SCALE` | Experimental render scale (0.5–2). Clear it for normal play |
+| `ZELDA_SHADER_ASYNC=0\|1`, `ZELDA_SHADER_ASYNC_BUDGET_MS` | Override the Shaders setting for this run (1 = background, 0 = wait); per-frame wait for background pipelines before their draws are skipped (default 3) |
+| `ZELDA_PSO_LOG=1` | Diagnostics: every pipeline and shader library created at draw time, and background preparation steps over 5 ms |
 | `ZELDA_THREAD_CPU=1`, `ZELDA_IPC_LOG=1` | Diagnostics: per-thread CPU census to `work/logs/threads.tsv`, IPC logging |
 
 Many other `ZELDA_*` and `DM_*` switches exist for A/B comparisons of individual optimizations. They default to the validated behavior; search for `getenv` in `host/` before relying on one.
@@ -70,7 +72,7 @@ Many other `ZELDA_*` and `DM_*` switches exist for A/B comparisons of individual
 
 ## Ground rules
 
-- **Original quality, normal speed.** Optimizations must not lower resolution, drop effects, skip draws or speed up the game. Never disable a check or fake a success value to make a test pass.
+- **Original quality, normal speed.** Optimizations must not lower resolution, drop effects, skip draws or speed up the game. The one exception is the player's Shaders setting (`host/shader_async.h`): in Background mode a draw waits only until its first-time shader or pipeline is ready. Never disable a check or fake a success value to make a test pass.
 - Source code, comments, UI text, log messages and file names are in English. Documentation is English-first, with a Simplified Chinese copy (`*.zh-CN.md`) kept in sync. Encode required non-ASCII upstream anchors and Unicode test characters as escapes; `tests/test_repository.py` enforces this.
 - Change the sources in `host/`, `ios/`, `script/` and `tools/`, never the generated files in `work/build`. Keep `core/` unchanged unless you follow the steps above.
 - Never commit game files, keys, saves, logs or build products. `local/` and `work/` are ignored; see [Repository layout](repository.md). Do not run `git clean` in a prepared checkout: it would delete your local data.

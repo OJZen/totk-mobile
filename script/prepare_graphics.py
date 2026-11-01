@@ -390,6 +390,12 @@ def adapt_backend(source):
         '#include "nvn_shader_prefetch.inc"\nstatic NvShader *shader_get(NSString *pc, int stage) {',
         'uint64_t bt = bp_now(); o = shader_load(pc, stage);':
         'uint64_t bt = bp_now(); zelda_prefetch_wait(pc); o = shader_load(pc, stage);',
+        # Diagnostic ZELDA_PSO_LOG=1 also lists every shader library loaded at draw time.
+        '    g_bp_lib_n++; g_bp_lib_ns += bp_now() - bt;\n    return o;':
+        '''    g_bp_lib_n++; g_bp_lib_ns += bp_now() - bt;
+    { static int log = -1; if (log < 0) log = getenv("ZELDA_PSO_LOG") != NULL;
+      if (log) MLOG("[lib] frame=%llu key=%s ms=%.1f", (unsigned long long)atomic_load(&g_cur_frame), pc.UTF8String, (bp_now() - bt) / 1e6); }
+    return o;''',
         # Metal restarts at 0xFFFF / 0xFFFFFFFF (8-bit indices are expanded to 16 bits, staying below 0x100).
         '        if (di->count) enc_r_draw_indexed(en, mp, di->count,':
         '''        if (S.restart && (di->itype == 0 ? S.restart_index <= 0xff : di->itype == 1 ? S.restart_index < 0xffff : S.restart_index != 0xffffffffu)) {
@@ -623,7 +629,7 @@ static inline void m4_end(id e) {
         'strlcpy(o->key, pc.UTF8String, sizeof o->key);':
         'strlcpy(o->key, pc.UTF8String, sizeof o->key); o->z_cube_uniform = zelda_cube_uniform_layout(lp, pc); zelda_function_source(o->fn, lp, nil);',
         'static __unsafe_unretained NvProg *prog_get(': '#include "nvn_compile_shaders.inc"\nstatic __unsafe_unretained NvProg *prog_get(',
-        'static MTLRenderPipelineDescriptor *pso_desc(': '#include "nvn_shader_variant.inc"\nstatic MTLRenderPipelineDescriptor *pso_desc(',
+        'static MTLRenderPipelineDescriptor *pso_desc(': '#include "nvn_shader_async.inc"\n#include "nvn_shader_variant.inc"\nstatic MTLRenderPipelineDescriptor *pso_desc(',
         'static int encode_args(': '#include "nvn_driver.inc"\n#include "nvn_buffer_cache.inc"\n#include "nvn_buffer_writes.inc"\n#include "nvn_uniform_snapshot.inc"\n#include "nvn_inline_uniform.inc"\nstatic int encode_args(',
         '            slots[aid] = gpu;\n            USE((__bridge id<MTLBuffer>)mb, MTLResourceUsageRead);':
         '            slots[aid] = z_uniform_gpu && nvn_stage < 2 && reg == 0 ? z_uniform_gpu :\n'
@@ -798,6 +804,19 @@ static void dispatch(const p_dispatch *dp) {
     long f = (long)atomic_load(&g_cur_frame);
     if (z_td_follow == 1 && passdump()) { g_td_frame = f + 1; z_td_follow = 2; }   // the window opens mid-frame: take the next, whole frame
     if (f > g_td_frame) { td_dump(); return; }''',
+        # Background shader preparation (shader_async.h, nvn_pipeline_async.inc): a missing pipeline compiles in the
+        # parallel precompile table while its draws are skipped, and the table only takes pipelines whose shaders load.
+        'static __unsafe_unretained id<MTLRenderPipelineState> pso_get(NvProg *pr, MTLRenderPassDescriptor *unused) {':
+        '#include "nvn_pipeline_async.inc"\nstatic __unsafe_unretained id<MTLRenderPipelineState> pso_get(NvProg *pr, MTLRenderPassDescriptor *unused) {',
+        '    ps = g_pso_lmap ? nil : pso_pend_take(&k);\n    if (ps) g_pp_taken++;':
+        '''    int z_skip = 0;
+    ps = g_pso_lmap ? nil : zelda_shader_background() ? zelda_pso_background(&k, vs, fs, &z_skip) : pso_pend_take(&k);
+    if (z_skip) { g_bp_pso_ns += bp_now() - bt; return nil; }
+    if (ps) g_pp_taken++;''',
+        '    if (hm_get_id(&g_pso, k)) return;\n    pthread_mutex_lock(&g_pp_mu);':
+        '    if (hm_get_id(&g_pso, k) || !zelda_pso_inputs_ready(k, vs, fs)) return;\n    pthread_mutex_lock(&g_pp_mu);',
+        'static void pso_pend_kick(const pso_key *k, NvShader *vs, NvShader *fs) {':
+        'static int zelda_pso_inputs_ready(const pso_key *k, NvShader *vs, NvShader *fs);\nstatic void pso_pend_kick(const pso_key *k, NvShader *vs, NvShader *fs) {',
         # Diagnostic ZELDA_PSO_LOG=1: every render pipeline built at draw time, by kind (what the startup warm-up misses).
         '        ps = [g_dev newRenderPipelineStateWithDescriptor:d error:&e];\n    }\n    g_bp_pso_n++; g_bp_pso_ns += bp_now() - bt;':
         '''        ps = [g_dev newRenderPipelineStateWithDescriptor:d error:&e];
