@@ -162,11 +162,13 @@ static void zelda_counters_log(void) {
         os_unfair_lock_unlock(&g_c1_lock);
     }
     MLOG("Pass counts through frame %llu: cube_batches=%llu draws=%llu; framebuffer_fetch_draws=%llu; conditional_clear joined=%llu deferred=%llu"
-         " (new_passes=%llu) standalone=%llu; query_read_flushes=%llu; uniforms_deferred=%llu snapshot_draws=%llu flush_batches=%llu pass_breaks=%llu",
+         " (new_passes=%llu) standalone=%llu; query_read_flushes=%llu; uniforms_deferred=%llu snapshot_draws=%llu flush_batches=%llu pass_breaks=%llu"
+         " barriers_kept=%llu",
         (unsigned long long)frame, (unsigned long long)z_cube_passes, (unsigned long long)z_cube_draws, (unsigned long long)z_fetch_draws,
         (unsigned long long)z_color_clear_joined, (unsigned long long)z_color_clear_deferred, (unsigned long long)z_color_clear_flushed,
         (unsigned long long)z_color_clear_alone, (unsigned long long)z_query_read_flushes, (unsigned long long)z_inline_deferred,
-        (unsigned long long)z_inline_snapshots, (unsigned long long)z_inline_flushes, (unsigned long long)z_inline_breaks);
+        (unsigned long long)z_inline_snapshots, (unsigned long long)z_inline_flushes, (unsigned long long)z_inline_breaks,
+        (unsigned long long)z_barriers_kept);
     MLOG("Between-pass uniforms through frame %llu: deferred=%llu replaced=%llu next_pass_writes=%llu blit_fallback=%llu", (unsigned long long)frame,
         (unsigned long long)z_write_deferred, (unsigned long long)z_write_replaced, (unsigned long long)z_write_in_pass, (unsigned long long)z_write_copied);
 }

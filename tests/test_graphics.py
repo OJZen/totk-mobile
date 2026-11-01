@@ -1317,11 +1317,12 @@ static uint64_t g_cnt_reset[32];
 static void vis_clear(void) { cleared++; }
 static void reset_query(uint64_t type) { const void *a = &type; switch (OP_RESET_COUNTER) {
 ''' + reset + '''} }
-static int g_blit, blit_barriers;
+static int g_blit, blit_barriers, keeps;
+static int zelda_barrier_keeps_pass(uint32_t bits) { (void)bits; return keeps; }
 static void zelda_submit_slice(void) {}
 static void rp_flush(void) { if (g_enc) rp_end(); }
 static void zelda_blit_barrier(void) { assert(g_blit); blit_barriers++; }
-static void memory_barrier(void) { switch (OP_BARRIER) {
+static void memory_barrier(uint32_t bits) { const void *a = &bits; switch (OP_BARRIER) {
 ''' + barrier + '''} }
 int main(void) {
     tex_t texture = {0}; R.rt.n = 2; R.rt.color[0] = R.rt.color[1] = &texture;
@@ -1342,8 +1343,10 @@ int main(void) {
     pid_t child = fork(); assert(child >= 0);
     if (!child) { c.mask = 7; clear(&c); exit(1); }
     int status; assert(waitpid(child, &status, 0) == child && WIFEXITED(status) && WEXITSTATUS(status) == 78);
-    g_enc = g_blit = 1; memory_barrier();
+    g_enc = g_blit = 1; memory_barrier(NVN_BARRIER_ORDER_FRAGMENTS_BIT);
     assert(!g_enc && g_blit && endings == 3 && blit_barriers == 1);
+    g_enc = keeps = 1; memory_barrier(NVN_BARRIER_ORDER_FRAGMENTS_BIT);
+    assert(g_enc && endings == 3 && blit_barriers == 1);
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'work/tmp') as temp:
@@ -1355,6 +1358,64 @@ int main(void) {
                             '-I', str(CORE / 'gfx/nvn'), '-I', str(CORE / 'gfx/nvn/include'),
                             str(code), '-o', str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
+
+    def test_barrier_keeps_pass_only_for_in_pass_ordering(self):
+        source = '''#import <Foundation/Foundation.h>
+#include <assert.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include "nvn.h"
+#include "nvn_refl.h"
+#define PD(format, pass) ((void)(pass))
+@interface NvShader : NSObject { @public nvn_refl rf; } @end
+@implementation NvShader @end
+@interface NvProg : NSObject { @public NvShader *sh[6]; } @end
+@implementation NvProg @end
+static id g_enc, g_blit;
+static uint64_t g_stat_pass;
+static struct { int active; } g_fz;
+static struct { int pending; } z_depth_clear;
+static struct { int count; } z_color_clear;
+static int z_pass_stores;
+static uint64_t z_barriers_kept;
+#include "nvn_barrier.inc"
+int main(void) { @autoreleasepool {
+    const uint32_t decal = NVN_BARRIER_ORDER_FRAGMENTS_BIT | NVN_BARRIER_INVALIDATE_TEXTURE_BIT;
+    assert(!zelda_barrier_keeps_pass(decal));   // no open pass
+    g_enc = [NSObject new];
+    assert(zelda_barrier_keeps_pass(decal) && z_barriers_kept == 1);
+    assert(zelda_barrier_keeps_pass(NVN_BARRIER_ORDER_PRIMITIVES_BIT | NVN_BARRIER_ORDER_FRAGMENTS_TILED_BIT));
+    assert(!zelda_barrier_keeps_pass(decal | NVN_BARRIER_ORDER_INDIRECT_DATA_BIT));
+    assert(!zelda_barrier_keeps_pass(decal | NVN_BARRIER_INVALIDATE_SHADER_BIT));
+    assert(!zelda_barrier_keeps_pass(decal | NVN_BARRIER_INVALIDATE_TEXTURE_DESCRIPTOR_BIT));
+    z_pass_stores = 1; assert(!zelda_barrier_keeps_pass(decal)); z_pass_stores = 0;
+    g_blit = [NSObject new]; assert(!zelda_barrier_keeps_pass(decal)); g_blit = nil;
+    g_fz.active = 1; assert(!zelda_barrier_keeps_pass(decal)); g_fz.active = 0;
+    z_depth_clear.pending = 1; assert(!zelda_barrier_keeps_pass(decal)); z_depth_clear.pending = 0;
+    z_color_clear.count = 1; assert(!zelda_barrier_keeps_pass(decal)); z_color_clear.count = 0;
+    assert(z_barriers_kept == 2);
+
+    NvProg *program = [NvProg new]; NvShader *vertex = [NvShader new], *fragment = [NvShader new];
+    program->sh[0] = vertex; program->sh[1] = fragment;
+    assert(!zelda_program_stores(nil) && !zelda_program_stores(program));
+    vertex->rf.nb = 1; vertex->rf.b[0].kind = NVN_RB_SBUFP;   // read-only storage, as the shrine decal vertex shader
+    fragment->rf.nb = 1; fragment->rf.b[0].kind = NVN_RB_TEX;
+    assert(!zelda_program_stores(program));
+    vertex->rf.b[0].rw = 1; assert(zelda_program_stores(program));
+    vertex->rf.b[0].rw = 0; fragment->rf.b[0].kind = NVN_RB_IMG; assert(zelda_program_stores(program));
+} }
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / 'work/tmp') as temp:
+            code, executable = Path(temp) / 'barrier.m', Path(temp) / 'barrier'
+            code.write_text(source)
+            subprocess.run(['clang', '-fobjc-arc', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined',
+                            '-I', str(ROOT / 'host'), '-I', str(CORE / 'gfx/nvn'), '-I', str(CORE / 'gfx/nvn/include'),
+                            str(code), '-framework', 'Foundation', '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+        backend = adapt_backend((CORE / 'gfx/nvn/nvn_mtl.m').read_text())
+        draw = backend[backend.index('frz_plain:;'):]
+        self.assertLess(draw.index('zelda_note_draw_writes('), draw.index('zelda_note_draw_stores(zelda_program_stores(pr));'))
+        self.assertIn('#include "nvn_sample_range.inc"\n#include "nvn_barrier.inc"\n', backend)
 
     def test_command_overflow_preserves_callbacks_and_persistent_records(self):
         source = adapt_interface((CORE / 'gfx/nvn/hle_nvn.c').read_text())
