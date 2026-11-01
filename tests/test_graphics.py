@@ -450,6 +450,86 @@ int main(void) { @autoreleasepool {
                             str(code), '-o', str(executable)], check=True)
             subprocess.run([str(executable)], env={**os.environ, 'MTL_DEBUG_LAYER': '1'}, check=True)
 
+    def test_depth16_load_clears_match_fragment_depth_writes(self):
+        backend = adapt_backend((CORE / 'gfx/nvn/nvn_mtl.m').read_text())
+        self.assertIn('pd.depthAttachment.clearDepth = zelda_depth_clear_value(pf, R.cd);', backend)
+        self.assertIn('rp.depthAttachment.clearDepth = zelda_depth_clear_value(t.pixelFormat, c->c.f[0]);', backend)
+        source = r'''#import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
+#include "nvn_depth16_clear.h"
+#include <assert.h>
+#include <stdio.h>
+static const char *msl =
+    "#include <metal_stdlib>\nusing namespace metal;\n"
+    "vertex float4 vs(uint id [[vertex_id]]) { return float4(id == 1 ? 3.0 : -1.0, id == 2 ? 3.0 : -1.0, 0.5, 1.0); }\n"
+    "struct D { float depth [[depth(any)]]; };\n"
+    "fragment D fs(constant float &depth [[buffer(0)]]) { return {depth}; }\n";
+int main(void) { @autoreleasepool {
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice(); assert(device);
+    NSError *error = nil;
+    id<MTLLibrary> library = [device newLibraryWithSource:@(msl) options:nil error:&error]; assert(library);
+    MTLRenderPipelineDescriptor *pd = [MTLRenderPipelineDescriptor new];
+    pd.vertexFunction = [library newFunctionWithName:@"vs"]; pd.fragmentFunction = [library newFunctionWithName:@"fs"];
+    pd.depthAttachmentPixelFormat = MTLPixelFormatDepth16Unorm;
+    id<MTLRenderPipelineState> pipeline = [device newRenderPipelineStateWithDescriptor:pd error:&error]; assert(pipeline);
+    MTLDepthStencilDescriptor *dd = [MTLDepthStencilDescriptor new];
+    dd.depthCompareFunction = MTLCompareFunctionAlways; dd.depthWriteEnabled = YES;
+    id<MTLDepthStencilState> write = [device newDepthStencilStateWithDescriptor:dd];
+    MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth16Unorm width:1 height:1 mipmapped:NO];
+    td.usage = MTLTextureUsageRenderTarget; td.storageMode = MTLStorageModePrivate;
+    id<MTLTexture> depth = [device newTextureWithDescriptor:td];
+    // Integer bins, half-bin boundaries and their neighbouring floats across the range, and 0.5 (32767 / 32768).
+    enum { N = 3 * 4 * 683 + 1 };
+    static float values[N]; int n = 0;
+    for (int k = 1; k < 65535 && n + 12 <= N - 1; k += 96)
+        for (int half = 0; half < 2; half++) {
+            float v = (float)((k + 0.5 * half) / 65535.0);
+            values[n++] = v; values[n++] = nextafterf(v, 0.0f); values[n++] = nextafterf(v, 1.0f);
+            float w = (float)((k + 0.5 * half + 0.25) / 65535.0);
+            values[n++] = w; values[n++] = nextafterf(w, 0.0f); values[n++] = nextafterf(w, 1.0f);
+        }
+    values[n++] = 0.5f;
+    id<MTLBuffer> cleared = [device newBufferWithLength:4 * N options:MTLResourceStorageModeShared];
+    id<MTLBuffer> plain = [device newBufferWithLength:4 * N options:MTLResourceStorageModeShared];
+    id<MTLBuffer> drawn = [device newBufferWithLength:4 * N options:MTLResourceStorageModeShared];
+    id<MTLCommandQueue> queue = [device newCommandQueue];
+    id<MTLCommandBuffer> commands = [queue commandBuffer];
+    for (int i = 0; i < n; i++)
+        for (int path = 0; path < 3; path++) {
+            MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor new];
+            rp.depthAttachment.texture = depth; rp.depthAttachment.storeAction = MTLStoreActionStore;
+            rp.depthAttachment.loadAction = MTLLoadActionClear;
+            rp.depthAttachment.clearDepth = path == 0 ? zelda_depth_clear_value(MTLPixelFormatDepth16Unorm, values[i]) : path == 1 ? values[i] : 0.0;
+            id<MTLRenderCommandEncoder> encoder = [commands renderCommandEncoderWithDescriptor:rp];
+            if (path == 2) {
+                [encoder setRenderPipelineState:pipeline]; [encoder setDepthStencilState:write];
+                [encoder setFragmentBytes:&values[i] length:sizeof values[i] atIndex:0];
+                [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+            }
+            [encoder endEncoding];
+            id<MTLBlitCommandEncoder> blit = [commands blitCommandEncoder];
+            [blit copyFromTexture:depth sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(1, 1, 1)
+                         toBuffer:path == 0 ? cleared : path == 1 ? plain : drawn destinationOffset:4 * i destinationBytesPerRow:2 destinationBytesPerImage:2];
+            [blit endEncoding];
+        }
+    [commands commit]; [commands waitUntilCompleted]; assert(!commands.error);
+    int plain_differs = 0;
+    for (int i = 0; i < n; i++) {
+        uint16_t c = *(uint16_t *)((uint8_t *)cleared.contents + 4 * i), p = *(uint16_t *)((uint8_t *)plain.contents + 4 * i);
+        uint16_t d = *(uint16_t *)((uint8_t *)drawn.contents + 4 * i);
+        if (c != d) { fprintf(stderr, "depth %.9g: clear %u, fragment %u\n", values[i], c, d); return 1; }
+        plain_differs += p != d;
+    }
+    printf("Depth16 clears: %d depths equal to fragment writes (%d differ without the correction)\n", n, plain_differs);
+} }
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / 'work/tmp') as temp:
+            code, executable = Path(temp) / 'depth16-clear.m', Path(temp) / 'depth16-clear'
+            code.write_text(source)
+            subprocess.run(['clang', '-fobjc-arc', '-Wall', '-Wextra', '-Werror', '-I', str(ROOT / 'host'),
+                            '-framework', 'Foundation', '-framework', 'Metal', str(code), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], env={**os.environ, 'MTL_DEBUG_LAYER': '1'}, check=True)
+
     def test_depth_demand_follows_nested_commands_and_keeps_uncertain_planes(self):
         backend = adapt_backend((CORE / 'gfx/nvn/nvn_mtl.m').read_text())
         scan = backend[backend.index('enum { DS_FREE ='):backend.index('// \u5199\u56de\u524d\u77bb\u7684\u5224\u5b9a')]
