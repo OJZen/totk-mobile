@@ -75,6 +75,36 @@ uint32_t front_vsync_handle(void) {
 }
 
 void *front_metal_layer(void) { return (__bridge void *)metal_layer; }
+// The software keyboard (swkbd.c): a modal alert with one text field. The guest thread waits for it like the console
+// waits for the keyboard applet; keys pressed while it was open never reach the game window, so the game's key state
+// is cleared afterwards.
+int front_text_input(const char *title, const char *sub, const char *guide, const char *initial, int max_chars, char *out, int out_cap) {
+    if (!metal_layer || !out || out_cap < 1) return -1;
+    __block int result = 0;
+    void (^ask)(void) = ^{
+        NSAlert *alert = [NSAlert new];
+        NSString *header = title && *title ? @(title) : @"Enter text";
+        alert.messageText = header;
+        NSString *detail = sub && *sub ? @(sub) : @"";
+        if (max_chars > 0) detail = [detail stringByAppendingFormat:@"%@(max %d)", detail.length ? @"\n" : @"", max_chars];
+        alert.informativeText = detail;
+        [alert addButtonWithTitle:@"OK"]; [alert addButtonWithTitle:@"Cancel"];
+        NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+        field.stringValue = initial ? @(initial) : @"";
+        if (guide && *guide) field.placeholderString = @(guide);
+        alert.accessoryView = field;
+        alert.window.initialFirstResponder = field;
+        [alert layout];
+        if ([alert runModal] == NSAlertFirstButtonReturn) {
+            const char *text = field.stringValue.UTF8String ?: "";
+            snprintf(out, (size_t)out_cap, "%s", text);
+            result = 1;
+        }
+        input_clear();
+    };
+    if (NSThread.isMainThread) ask(); else dispatch_sync(dispatch_get_main_queue(), ask);
+    return result;
+}
 void crash_set_wait_dump(void (*fn)(void)) { wait_dump = fn; }
 void dm_res_report_register(void (*fn)(uint32_t, const char *)) { resource_report = fn; }
 
