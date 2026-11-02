@@ -1,9 +1,25 @@
 #include <math.h>
+#include <stdatomic.h>
 NVN(nvnColorStateSetLogicOp, void, NVNcolorState *state, NVNlogicOp op) {
     // shortcut: Metal's normal color path implements COPY; other Boolean operations need shader support.
     if (op != NVN_LOGIC_OP_COPY) { LOG("BLOCKED NVN color logic operation=%d", op); exit(78); }
     ((color_st *)state)->logic_op = op;
 }
+// shortcut: the alpha test (drop a fragment whose colour 0 alpha fails the comparison with the reference) is recorded
+// but not applied: the translated pixel shaders are built with the test off and Metal has no fixed-function one, so
+// alpha-tested draws keep their failing fragments. TotK selects it in some cutscenes; drawing on beats stopping there.
+static void zelda_alpha_test_note(const char *what, double value) {
+    static _Atomic int noted;
+    (void)what; (void)value;   // LOG may expand to nothing
+    if (!atomic_exchange(&noted, 1)) LOG("NVN alpha test %s=%g requested; drawn without the test", what, value);
+}
+NVN(nvnColorStateSetAlphaTest, void, NVNcolorState *state, NVNalphaFunc func) {
+    if (func < NVN_ALPHA_FUNC_NEVER || func > NVN_ALPHA_FUNC_ALWAYS) { LOG("BLOCKED NVN alpha function=%d", func); exit(78); }
+    ((color_st *)state)->alpha_func = func;
+    if (func != NVN_ALPHA_FUNC_ALWAYS) zelda_alpha_test_note("function", func);
+}
+NVN(nvnColorStateGetAlphaTest, NVNalphaFunc, const NVNcolorState *state) { return (NVNalphaFunc)((const color_st *)state)->alpha_func; }
+NVN(nvnCommandBufferSetAlphaRef, void, NVNcommandBuffer *c, float ref) { (void)c; zelda_alpha_test_note("reference", ref); }
 NVN(nvnCommandBufferSetDepthClamp, void, NVNcommandBuffer *c, uint32_t enable) {
     const uint8_t clamp = !!(enable & 255);
     bind_state(c, 6, &clamp, sizeof clamp);
