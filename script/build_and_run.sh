@@ -40,7 +40,7 @@ clang -O2 -g -Wall -Wextra -Wno-deprecated-declarations -fobjc-arc \
     $(pkg-config --cflags opus vpx) \
     -ivfsoverlay work/build/graphics-overlay.json \
     -I host -I "$PWD/core/host" -I "$gfx" -I "$gfx/nvn" -I "$gfx/nvn/include" \
-    "${sources[@]}" host/kernel.c host/threads.c host/timeline.c host/trace_writer.c host/services.c host/audio.c host/audio_mixer.c host/filesystem.c host/graphics.m host/shader_prep.m host/input.c host/vibration.c host/movie.c host/movie_video.c host/font_watch.c host/input_script.c host/gamepad.m host/performance.c host/game_timing.c host/settings.m \
+    "${sources[@]}" host/kernel.c host/threads.c host/timeline.c host/trace_writer.c host/services.c host/audio.c host/audio_mixer.c host/filesystem.c host/graphics.m host/shader_prep.m host/input.c host/vibration.c host/swkbd.c host/movie.c host/movie_video.c host/font_watch.c host/input_script.c host/gamepad.m host/performance.c host/game_timing.c host/settings.m \
     "$PWD/core/host/loader.c" "$PWD/core/host/entry.S" \
     work/build/hle_nv.c host/display.c work/build/hle_nvn.c \
     "$gfx/nvn/nvn_mtl.m" "$gfx/nvn/nvn_refl.m" "$gfx/nvn/nvn_tex.c" host/nvn_dirty.c \
