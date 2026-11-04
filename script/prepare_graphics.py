@@ -704,7 +704,7 @@ static void dispatch(const p_dispatch *dp) {
                 if (!scissor_full(R.rt.color[c->index], &R.rt.cview[c->index], R.rt.has_cview[c->index])) { zelda_partial_clear(c); break; }
                 if (g_enc) { rp_end(); zelda_slice_between_passes(); }''',
         'static void rp_end(void) { if (g_enc) {':
-        '#include "nvn_render_view.inc"\n#include "nvn_depth_clear.h"\n#include "nvn_color_clear.h"\n#include "nvn_pass_writes.h"\n#include "nvn_color_targets.inc"\n#include "nvn_cube_pass.h"\nstatic void rp_end(void) { if (g_enc) {',
+        '#include "nvn_render_view.inc"\n#include "nvn_depth_clear.h"\n#include "nvn_depth16_clear.h"\n#include "nvn_color_clear.h"\n#include "nvn_pass_writes.h"\n#include "nvn_color_targets.inc"\n#include "nvn_cube_pass.h"\nstatic void rp_end(void) { if (g_enc) {',
         '    g_enc_mode = clear_only;':
         '    if (z_depth_clear.pending) clear_only = 0;\n    g_enc_mode = clear_only;',
         '    return g_enc;\n}\n// \u5f00\u901a\u9053\u524d\u7684\u7a7a\u526a\u88c1\u9884\u68c0\u67e5':
@@ -787,6 +787,11 @@ static void dispatch(const p_dispatch *dp) {
         'static void copy_b2t(const p_copy_b2t *c) {\n    if (c->tex) zskip_del(c->tex->serial);\n    id<MTLTexture> t = tex_mtl(c->tex); zelda_texture_gpu_written(c->tex);',
         'static void clear_tex(const p_clear_tex *c) {\n    if (c->tex) zskip_del(c->tex->serial);\n    id<MTLTexture> t = tex_mtl(c->tex);':
         'static void clear_tex(const p_clear_tex *c) {\n    if (c->tex) zskip_del(c->tex->serial);\n    id<MTLTexture> t = tex_mtl(c->tex); zelda_texture_gpu_written(c->tex);',
+        # Depth16 load-clears rounded like fragment depth writes (nvn_depth16_clear.h).
+        '            pd.depthAttachment.clearDepth = R.cd; pd.depthAttachment.storeAction = MTLStoreActionStore;\n            MTLPixelFormat pf = pd.depthAttachment.texture.pixelFormat;':
+        '            MTLPixelFormat pf = pd.depthAttachment.texture.pixelFormat;\n            pd.depthAttachment.clearDepth = zelda_depth_clear_value(pf, R.cd); pd.depthAttachment.storeAction = MTLStoreActionStore;',
+        '        if (depth) { rp.depthAttachment.clearDepth = c->c.f[0];':
+        '        if (depth) { rp.depthAttachment.clearDepth = zelda_depth_clear_value(t.pixelFormat, c->c.f[0]);',
         'id<MTLTexture> s = tex_mtl(c->src), d = tex_mtl(c->dst);':
         'id<MTLTexture> s = tex_mtl(c->src), d = tex_mtl(c->dst); zelda_texture_gpu_written(c->dst);',
         'static long g_td_frame = -2;': '__strong NSMutableOrderedSet *z_texraw_noted;   // serials noted through ZELDA_TEXRAW_SHADER\nstatic long g_td_frame = -2;',

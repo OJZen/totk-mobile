@@ -16,7 +16,7 @@ CoreAudio 默认输出和无锁音频队列参考 `dm/host/hle_audio.c`，沿用
 
 Xbox/Nintendo 面键映射复用 `dm/host/dm_padmap.h`；手柄接入参考 `dm/ios/Sources/dm_gamepad.m`。性能统计复用图形后端的实际呈现回执、GPU 与提交 CPU 计时，调优沿用其逐项对照和 Metal 校验流程。
 
-图形后端还复用 `core/gfx/nvn/` 的 NVN 到 Metal 适配、命令执行与反射，以及 `core/gfx/tex/` 的纹理解码和布局转换；`host/nvn_dirty.c` 的脏页管理参考 `dm/gfx/nvn/nvn_dirty.c`。构建时通过 Clang 文件覆盖应用本项目的适配；不改写 `core/` 中的文件。NVN 头文件保留 `Copyright (c) 2020 h1k421` 的 MIT 声明；BC 解码器为 `core/third_party/bcdec/`，选用 MIT 许可，`Copyright (c) 2022 Sergii Kudlai`。上述两项 MIT 许可文本与下文一致，原始声明随被引用源码保留。Tegra 块线性布局的公开格式参考 deko3d 和 Ryujinx。
+图形后端还复用 `core/gfx/nvn/` 的 NVN 到 Metal 适配、命令执行与反射，以及 `core/gfx/tex/` 的纹理解码和布局转换；`host/nvn_dirty.c` 的脏页管理参考 `dm/gfx/nvn/nvn_dirty.c`。构建时通过 Clang 文件覆盖应用本项目的适配；不改写 `core/` 中的文件。NVN 头文件保留 `Copyright (c) 2020 h1k421` 的 MIT 声明；BC 解码器为 `core/third_party/bcdec/`，选用 MIT 许可，`Copyright (c) 2022 Sergii Kudlai`。上述两项 MIT 许可文本与下文一致，原始声明随被引用源码保留。Tegra 块线性布局的公开格式参考 deko3d 和 Ryujinx。`host/nvn_depth16_clear.h` 的 Depth16 加载清除修正移植自 [seedds/nxnative](https://github.com/seedds/nxnative)（提交 `a5513d4`）的 `nvn_depth16_clear_value`，MIT 许可，`Copyright (c) 2026 seedds`；许可文本与下文一致。
 
 MIT License
 
