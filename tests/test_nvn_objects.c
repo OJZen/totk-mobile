@@ -158,6 +158,13 @@ int main(void) {
     color_st color = {.blend_en = 0xa5, .alpha_func = NVN_ALPHA_FUNC_ALWAYS};
     h_nvnColorStateSetLogicOp((NVNcolorState *)&color, NVN_LOGIC_OP_COPY);
     assert(color.logic_op == NVN_LOGIC_OP_COPY && color.blend_en == 0xa5 && color.alpha_func == NVN_ALPHA_FUNC_ALWAYS);
+    // The alpha test is recorded (and drawn without) instead of stopping the game.
+    h_nvnColorStateSetAlphaTest((NVNcolorState *)&color, NVN_ALPHA_FUNC_LEQUAL);
+    assert(color.alpha_func == NVN_ALPHA_FUNC_LEQUAL && color.blend_en == 0xa5 && color.logic_op == NVN_LOGIC_OP_COPY);
+    assert(h_nvnColorStateGetAlphaTest((const NVNcolorState *)&color) == NVN_ALPHA_FUNC_LEQUAL);
+    h_nvnCommandBufferSetAlphaRef(NULL, 0.5f);
+    h_nvnColorStateSetAlphaTest((NVNcolorState *)&color, NVN_ALPHA_FUNC_ALWAYS);
+    assert(h_nvnColorStateGetAlphaTest((const NVNcolorState *)&color) == NVN_ALPHA_FUNC_ALWAYS);
     h_nvnCommandBufferSetDepthClamp(NULL, 0);
     assert(recorded_state.kind == 6 && !recorded_state.bytes[0]);
     h_nvnCommandBufferSetDepthClamp(NULL, 1);
