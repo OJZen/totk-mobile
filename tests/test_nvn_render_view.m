@@ -110,6 +110,10 @@ int main(int argc, char **argv) {
         R.clear_c[1] = 1; R.clear_d = 0; zelda_note_draw_writes(0); zelda_begin_color_targets(0);
         assert(z_pass_written == 3 && !z_pass_depth_written); zelda_note_draw_writes(1); assert(z_pass_depth_written);
         R.clear_c[1] = 0;
+        // Store tracking: the draw that opens a pass carries its stores in; a clear-only pass starts without them.
+        assert(!z_pass_stores); zelda_note_draw_stores(1); assert(z_pass_stores);
+        zelda_begin_color_targets(1); assert(!z_pass_stores && !z_barriers_kept);
+        zelda_begin_color_targets(0); assert(z_pass_stores); zelda_note_draw_stores(0); zelda_begin_color_targets(0); assert(!z_pass_stores);
         // The same subresource bound to both slots is attached once.
         R.rt.color[1] = &first; g_enc = NULL;
         zelda_color_targets(0x000000f0, 2, 0); zelda_color_targets(0x0000000f, 1, 0); zelda_begin_color_targets(0);

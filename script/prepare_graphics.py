@@ -862,6 +862,7 @@ void mtl_exec(const uint8_t *p) {''',
         '            case OP_BARRIER: case OP_SET_TEX_POOL: case OP_SET_SAMP_POOL: break;':
         '''            case OP_BARRIER:
                 PD("Z barrier bits=%#x", *(const uint32_t *)a);
+                if (zelda_barrier_keeps_pass(*(const uint32_t *)a)) break;
                 rp_flush();
                 if (g_blit) zelda_blit_barrier();
                 zelda_submit_slice();
@@ -929,6 +930,7 @@ static void zelda_attachmentless_begin(MTL4RenderPassDescriptor *pass) {
 #include "nvn_cube_draw.inc"
 #include "nvn_framebuffer_fetch.inc"
 #include "nvn_sample_range.inc"
+#include "nvn_barrier.inc"
 #include "nvn_line_width.h"
 #include "nvn_wide_line.inc"
 #include "nvn_point_params.inc"
@@ -1004,6 +1006,7 @@ static void draw(const p_draw *dw, const p_draw_idx *di) {
     if ((g_enc || z_depth_clear.pending) && draw_samples_rt_mask(pr, z_pass_written & ~z_fetched, z_pass_depth_written || z_depth_clear.pending)) rp_flush();
     zelda_color_targets(S.chmask.mask, pr->sh[1] ? pr->sh[1]->rf.color_mask : 0, z_depth_clear.pending || z_color_clear.count);
     zelda_note_draw_writes((S.ds.dt && S.ds.dw) || S.ds.st);
+    zelda_note_draw_stores(zelda_program_stores(pr));
     uint64_t z_index_gpu = di && !pr->sh[0]->z_wide_line && di->itype == 0 && di->count ? zelda_expand_indices(di) : 0;''',
         'R.clear_c[c->index] = 1; R.cc[c->index] = MTLClearColorMake(c->rgba[0], c->rgba[1], c->rgba[2], c->rgba[3]);':
         'PD("C c%d rgba=%g,%g,%g,%g mask=%x", c->index, c->rgba[0], c->rgba[1], c->rgba[2], c->rgba[3], c->mask);\n                R.clear_c[c->index] = 1; R.cc[c->index] = MTLClearColorMake(c->rgba[0], c->rgba[1], c->rgba[2], c->rgba[3]);',

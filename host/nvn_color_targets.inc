@@ -72,15 +72,23 @@ static unsigned zelda_pass_targets(int clear_only) {
 // decals sample the G-buffer with depth writes off, which cost one full-resolution pass per draw).
 static unsigned z_pass_written, z_draw_written;
 static int z_pass_depth_written, z_draw_depth_written;
+// Whether a draw in this pass may have stored to memory (image or writable storage-buffer bindings); a barrier then
+// has to end the pass (nvn_barrier.inc). Noted, like the targets, before the draw's pass opens.
+static int z_pass_stores, z_draw_stores;
+static uint64_t z_barriers_kept;
 static void zelda_note_draw_writes(int depth_or_stencil) {
     z_draw_written = z_color_targets & 0xff; z_draw_depth_written = depth_or_stencil;
     if (g_enc) { z_pass_written |= z_draw_written; z_pass_depth_written |= depth_or_stencil; }
 }
+static void zelda_note_draw_stores(int stores) {
+    z_draw_stores = stores;
+    if (g_enc) z_pass_stores |= stores;
+}
 static void zelda_begin_color_targets(int clear_only) {
     z_pass_attached = zelda_pass_targets(clear_only);
-    z_pass_written = 0; z_pass_depth_written = R.clear_d || R.clear_s;
+    z_pass_written = 0; z_pass_depth_written = R.clear_d || R.clear_s; z_pass_stores = 0;
     for (int i = 0; i < 8; i++) if (R.clear_c[i]) z_pass_written |= 1u << i;
-    if (clear_only != 1) { z_pass_written |= z_draw_written; z_pass_depth_written |= z_draw_depth_written; }
+    if (clear_only != 1) { z_pass_written |= z_draw_written; z_pass_depth_written |= z_draw_depth_written; z_pass_stores = z_draw_stores; }
 }
 static int zelda_use_color_target(unsigned index, int clear_only, int clear) {
     (void)clear_only;
