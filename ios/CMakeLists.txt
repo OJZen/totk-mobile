@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ZeldaMobile LANGUAGES C OBJC ASM)
+project(ZeldaMobile LANGUAGES C CXX OBJC ASM)
 get_filename_component(ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 if(NOT ZELDA_IOS_TEAM)
   message(FATAL_ERROR "Use script/ios.sh with ZELDA_IOS_TEAM set")
@@ -37,6 +37,23 @@ target_link_libraries(ZeldaMobile PRIVATE "${VPX}/lib/libvpx.a" "${VPX}/lib/libo
   "-framework CoreVideo" "-framework Metal" "-framework MetalFX"
   "-framework ImageIO" "-framework UniformTypeIdentifiers" "-framework AudioToolbox"
   "-framework AVFAudio" "-framework GameController" "-framework CoreHaptics")
+# On-device shader compiler (script/prepare_runtime_shaders.sh): the translator as a NativeAOT library, and SPIRV-Cross's
+# command line behind spirv_msl.cpp, built from the same sources as the Mac tool.
+set(SPIRV "${IOS_WORK}/deps/SPIRV-Cross")
+set(SHADERS "${IOS_WORK}/deps/runtime-shaders")
+set(SPIRV_SOURCES)
+foreach(NAME spirv_cross spirv_parser spirv_cross_parsed_ir spirv_cfg spirv_glsl spirv_cpp spirv_msl spirv_hlsl spirv_reflect spirv_cross_util)
+  list(APPEND SPIRV_SOURCES "${SPIRV}/${NAME}.cpp")
+endforeach()
+add_library(zelda_spirv STATIC "${CMAKE_CURRENT_LIST_DIR}/shaders/spirv_msl.cpp" ${SPIRV_SOURCES})
+target_include_directories(zelda_spirv PRIVATE "${SPIRV}")
+target_compile_options(zelda_spirv PRIVATE -O2 -w)
+set_target_properties(zelda_spirv PROPERTIES CXX_STANDARD 17 XCODE_ATTRIBUTE_GCC_OPTIMIZATION_LEVEL 2)
+target_link_libraries(ZeldaMobile PRIVATE zelda_spirv "${SHADERS}/RuntimeShaders.a" "${SHADERS}/libbootstrapperdll.o"
+  "${SHADERS}/libRuntime.WorkstationGC.a" "${SHADERS}/libeventpipe-disabled.a" "${SHADERS}/libstandalonegc-disabled.a"
+  "${SHADERS}/libaotminipal.a" "${SHADERS}/libstdc++compat.a" "${SHADERS}/libSystem.Native.a"
+  "${SHADERS}/libSystem.Globalization.Native.a" "${SHADERS}/libSystem.IO.Compression.Native.a"
+  "${SHADERS}/libSystem.Security.Cryptography.Native.Apple.a" "-framework Security" "-lz" "-lc++")
 foreach(MODULE main subsdk0 sdk)
   target_link_options(ZeldaMobile PRIVATE "-Wl,-segprot,__DM${MODULE}W,rw,rw")
 endforeach()

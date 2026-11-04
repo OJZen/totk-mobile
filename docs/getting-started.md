@@ -78,7 +78,7 @@ Replace `<chain>` with the value in `work/build/dmsh_chain.h`. The build can be 
 
 The same app targets both iPhone and iPad, using arm64 with a minimum deployment target of iOS / iPadOS 26. A device does not need to be connected to build the app. Installation requires a development provisioning profile that includes the target device; register a new device in Xcode and refresh the signing before installing.
 
-Finish the Mac preparation first (resources, modules, MSL, render heap). The device does not run the Python shader translator; new guest shader requests must be translated on the Mac.
+Finish the Mac preparation first (resources, modules, MSL, render heap, and `./script/prepare_shader_tools.sh`). The build links an on-device shader compiler (`script/prepare_runtime_shaders.sh` runs as part of it), so new shader requests are translated on the device and do not need the Mac. `ios.sh transfer shaders` also sends the shader index and code it translates from.
 
 ```sh
 # Use your own team and device identifiers; do not write them into the source.

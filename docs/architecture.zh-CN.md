@@ -52,4 +52,4 @@ RomFS ─ script/extract_shaders.py → 索引 → 配对 → 翻译 → 构建 
 - 修改着色器翻译规则会改变 chain 指纹。需检查反射、宿主绑定与 GPU 回读，不要混用旧缓存和新规则。`work/shaders/b-*/*.metallib` 实际是 MSL 文本，真正的二进制库在 `ir-macos/` 下。
 - 离线 IR 编译契约覆盖目标、语言与严格浮点选项以及共享源码变换；`prepare_graphics.py` 生成 `shader_ir_identity.h`。每次加载都校验 MSL 与二进制的 SHA-256，不一致时回退。
 - `script/shader-chain-aliases.json` 只收录已证明不改变生成库的精确指纹别名，不能用它跳过真实的着色器变更。
-- iOS 复用 MSL、反射与管线描述，在设备上构建 Metal 库；新的客体着色器翻译仍需在 Mac 上完成。
+- iOS 复用 MSL、反射与管线描述，在设备上构建 Metal 库。新的着色器请求由 `ios/shaders/` 在设备上翻译：同一个翻译器以 NativeAOT 编译，链接 SPIRV-Cross 的命令行，并把 Python 的库检查移植为 C#。`tests/runtime_shaders/` 用它重建全部已准备的着色器并与 Python 管线的结果比对；修改任一侧后都要运行。

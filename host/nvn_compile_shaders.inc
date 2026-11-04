@@ -1,8 +1,13 @@
 #include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+int zelda_runtime_shaders(const char *shaders, const char *library);   // ios/shaders/RuntimeShaders.cs
+#endif
 static void zelda_compile_shaders(void) {
 #if TARGET_OS_IPHONE
-    // Captured requests remain in Documents/work/shaders for the Mac preparation tool.
-    MDIE("Shader translation is required on the Mac; export work/shaders requests, prepare them, and sync back to iOS");
+    // The translator, SPIRV-Cross and the library checks run in process with the chain the libraries were prepared with.
+    MLOG("Preparing captured shaders on the device");
+    if (zelda_runtime_shaders(g_msl_dir.stringByDeletingLastPathComponent.fileSystemRepresentation, g_msl_dir.fileSystemRepresentation))
+        MDIE("Runtime shader compilation failed; see the log above");
 #else
     @autoreleasepool {
         NSString *root = NSFileManager.defaultManager.currentDirectoryPath;

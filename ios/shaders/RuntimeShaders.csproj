@@ -1,0 +1,26 @@
+<!-- The on-device shader compiler: the prepared translator and RuntimeShaders.cs as a NativeAOT static library for iOS
+     (script/prepare_runtime_shaders.sh). The SPIRV-Cross bridge (spirv_msl.cpp) links into the app directly. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>RuntimeShaders</AssemblyName>
+    <PublishAot>true</PublishAot>
+    <PublishAotUsingRuntimePack>true</PublishAotUsingRuntimePack>
+    <NativeLib>Static</NativeLib>
+    <RuntimeIdentifier>ios-arm64</RuntimeIdentifier>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <NoWarn>CS7022</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(RyuSrc)/src/Ryujinx.Graphics.Shader/Ryujinx.Graphics.Shader.csproj" />
+    <ProjectReference Include="$(RyuSrc)/src/Ryujinx.Common/Ryujinx.Common.csproj" />
+    <Compile Include="../../work/build/runtime-shaders/Program.cs" />
+    <Compile Include="RuntimeShaders.cs" />
+    <DirectPInvoke Include="zelda_spirv" />
+  </ItemGroup>
+</Project>

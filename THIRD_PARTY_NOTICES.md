@@ -92,4 +92,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 `script/build_ios_deps.sh` cross-compiles Opus 1.6.1 and libvpx 1.17.0 for devices from source archives with pinned SHA-256; the sources and licenses are kept in `work/ios/deps/`, and the macOS Homebrew binaries are not linked.
 
+The iOS app links the on-device shader compiler built by `script/prepare_runtime_shaders.sh`: the `dmsh_xlate` front end and the Ryujinx shader translation subset described above (MIT), the .NET NativeAOT runtime from the `Microsoft.NETCore.App.Runtime.NativeAOT.ios-arm64` package (MIT, `Copyright (c) .NET Foundation and Contributors`; its license and third-party notices ship in that package under `work/tools/nuget/`), and SPIRV-Cross at the same commit as above, including its command-line `main.cpp` (Apache 2.0; the license is in `work/ios/deps/SPIRV-Cross/LICENSE`).
+
 On the Mac, `script/ios_transfer.py` uses the USB / House Arrest / AFC interfaces of [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) 11.34.1, whose package metadata declares `GPL-3.0-or-later`; its license ships with the package in the separate virtual environment. It is used only for transfers from the development machine and is not linked into the iOS app.

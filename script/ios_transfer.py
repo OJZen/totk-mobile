@@ -195,12 +195,20 @@ async def run(args):
                 raise ValueError('resource transfer is incomplete')
             marker=ROOT/'work/ios/resources-ready.json'
             marker.write_text(json.dumps({'chain':chain,'romfs_bytes':size,'libraries':sum(n.endswith('.metallib') for n in expected)})+'\n')
+            # The marker only records the verified state above; a newer verification replaces it.
+            if await afc.exists(REMOTE+'/shaders/ios-ready.json'): await afc.rm(REMOTE+'/shaders/ios-ready.json')
             print(await upload(afc,marker,REMOTE+'/shaders/ios-ready.json'));return
         if args.mode == 'romfs': pairs = [(ROOT / 'work/romfs-host.bin', REMOTE + '/romfs-host.bin')]
         elif args.mode == 'shaders':
             folder = shaders / ('b-' + chain)
             pairs = [(f, REMOTE + '/shaders/' + str(f.relative_to(shaders))) for f in sorted(folder.iterdir()) if f.suffix in ('.metallib', '.json')]
-            pairs += [(shaders / name, REMOTE + '/shaders/' + name) for name in ('shader_map.tsv', 'pso_user.tsv')]
+            pairs += [(shaders / 'shader_map.tsv', REMOTE + '/shaders/shader_map.tsv')]
+            # Each device learns its own pipeline list while playing; the Mac's only seeds a new install.
+            if not await afc.exists(REMOTE + '/shaders/pso_user.tsv'):
+                pairs += [(shaders / 'pso_user.tsv', REMOTE + '/shaders/pso_user.tsv')]
+            # The on-device compiler (ios/shaders) translates new variant requests from the indexed shader code.
+            pairs += [(shaders / name, REMOTE + '/shaders/' + name) for name in ('index.json', 'build-failures.json')]
+            pairs += [(f, REMOTE + '/shaders/code/' + f.name) for f in sorted((shaders / 'code').iterdir()) if f.suffix == '.bin']
         elif args.mode == 'ir':
             from build_shader_ir import cache_directory
             folder = cache_directory(shaders / ('b-' + chain))

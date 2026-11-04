@@ -231,7 +231,7 @@ void pair(const void *vc, const void *vd, const void *fc, const void *fd) {
                 current = Path.cwd()
                 try:
                     os.chdir(directory)
-                    for folder in ('work/tmp', 'work/shaders/source', 'work/shaders/spv'): Path(folder).mkdir(parents=True)
+                    for folder in ('work/tmp', 'work/shaders/source', 'work/shaders/code'): Path(folder).mkdir(parents=True)
                     path = Path(f'work/shaders/source/runtime-{expected["key"]}.nvn')
                     runtime.capture(bytes(control), bytes(code))
                     self.assertEqual(path.read_bytes(), control + code)
@@ -240,7 +240,7 @@ void pair(const void *vc, const void *vd, const void *fc, const void *fd) {
                     self.assertEqual(path.stat().st_mtime_ns, timestamp)
                     self.assertEqual(list(Path('work/tmp').iterdir()), [])
                     path.unlink()
-                    Path(f'work/shaders/spv/{expected["key"]}.spv').touch()
+                    Path(f'work/shaders/code/{expected["key"]}.bin').touch()
                     runtime.capture(bytes(control), bytes(code))
                     self.assertFalse(path.exists())
                     invalid = bytearray(control); struct.pack_into('<I', invalid, 0, 0)

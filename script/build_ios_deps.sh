@@ -42,3 +42,5 @@ if [[ ! -f "$root/install/lib/libopus.a" ]]; then
     cmake --build "$root/opus-build" -j4
     cmake --install "$root/opus-build"
 fi
+# The on-device shader compiler links into the app (ios/CMakeLists.txt).
+bash "${root%/work/ios/deps}/script/prepare_runtime_shaders.sh" ios
