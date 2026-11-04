@@ -1,5 +1,6 @@
 // Host-only checks exercise kernel/SVC behavior without executing a proprietary SDK.
 #include "dm.h"
+#include <stdbool.h>
 #include <time.h>
 struct dm_flags g_flag;
 uint64_t g_t0_ns;
@@ -25,3 +26,4 @@ module_t *module_of(const void *p) {
 }
 void zelda_present_metalfx(int enabled) { (void)enabled; }
 int zelda_present_metalfx_mode(void) { return 0; }
+void zelda_set_shader_wait(bool wait) { (void)wait; }

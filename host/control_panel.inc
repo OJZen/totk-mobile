@@ -1,5 +1,5 @@
 // Collapsible control panel in the bottom-left corner: a small handle opens the player settings (frame rate, render
-// resolution, MetalFX, full screen, performance overlay, sound, rumble). Changes apply at once and are saved; the menu
+// resolution, MetalFX, shader compilation, full screen, performance overlay, sound, rumble). Changes apply at once and are saved; the menu
 // bar items use the same apply_* actions. The collapsed handle fades out after the pointer rests, so it does not sit
 // over the game. Controls refuse first responder and keys never reach them (the window monitor forwards them to the
 // guest), so the panel cannot take input focus from the game.
@@ -9,13 +9,14 @@ static void apply_render(int mode);
 static void apply_sound(bool on);
 static void apply_performance(bool shown);
 static void apply_vibration(int mode);
+static void apply_shader_wait(bool wait);
 
 @interface ZeldaControls : NSObject {
 @public
     NSWindow *window;
     NSButton *handle, *collapse, *test;
     NSView *panel;
-    NSSegmentedControl *fps, *render, *metalfx, *vibration;
+    NSSegmentedControl *fps, *render, *metalfx, *shaders, *vibration;
     NSSwitch *fullscreen, *performance, *sound;
     NSTextField *controller;
     NSTimer *fade, *status;
@@ -56,6 +57,7 @@ static void controls_refresh(void);
 - (void)fpsChanged:(NSSegmentedControl *)sender { apply_target_fps(control_rates[sender.selectedSegment]); }
 - (void)renderChanged:(NSSegmentedControl *)sender { apply_render((int)sender.selectedSegment); }
 - (void)metalfxChanged:(NSSegmentedControl *)sender { apply_metalfx((int)sender.selectedSegment); }
+- (void)shadersChanged:(NSSegmentedControl *)sender { apply_shader_wait(sender.selectedSegment == 1); }
 - (void)vibrationChanged:(NSSegmentedControl *)sender { apply_vibration((int)sender.selectedSegment); }
 - (void)fullscreenChanged:(NSSwitch *)sender { (void)sender; [window toggleFullScreen:nil]; }
 - (void)performanceChanged:(NSSwitch *)sender { apply_performance(sender.state == NSControlStateValueOn); }
@@ -101,6 +103,7 @@ static void controls_refresh(void) {
     controls->render.enabled = zelda_render_scale() != 0;
     controls->render.selectedSegment = s.render;
     controls->metalfx.selectedSegment = zelda_present_metalfx_mode();   // ZELDA_METALFX can override the setting
+    controls->shaders.selectedSegment = s.shader_wait;
     controls->vibration.selectedSegment = s.vibration;
     controls->fullscreen.state = controls->window.styleMask & NSWindowStyleMaskFullScreen ? NSControlStateValueOn : NSControlStateValueOff;
     controls->performance.state = performance_visible() ? NSControlStateValueOn : NSControlStateValueOff;
@@ -135,6 +138,8 @@ static void controls_start(NSWindow *window) {
         @"Original keeps the game-selected resolution. The 1080 / 720 / 640 presets request 1920×1080, 1280×720 and 1136×640.", choice_width);
     controls->metalfx = control_choice(@[@"Off", @"Window", @"4K"], @selector(metalfxChanged:),
         @"MetalFX spatially upscales the 1920×1080 output to the window or 3840×2160. It has no effect when the window is at or below 1920×1080.", choice_width);
+    controls->shaders = control_choice(@[@"Background", @"Wait"], @selector(shadersChanged:),
+        @"Background: a new shader compiles while the game keeps running, so an effect seen for the first time may appear a few frames late. Wait: every frame waits for its shaders, which can stall briefly.", choice_width);
     controls->vibration = control_choice(@[@"Off", @"On"], @selector(vibrationChanged:),
         @"Enable controller rumble at the calibrated strength.", 118);
     controls->fullscreen = control_switch(@selector(fullscreenChanged:), @"⌃⌘F");
@@ -153,6 +158,7 @@ static void controls_start(NSWindow *window) {
         @[control_label(@"Frame rate", 11, NSFontWeightRegular, secondary), controls->fps],
         @[control_label(@"Resolution", 11, NSFontWeightRegular, secondary), controls->render],
         @[control_label(@"MetalFX", 11, NSFontWeightRegular, secondary), controls->metalfx],
+        @[control_label(@"Shaders", 11, NSFontWeightRegular, secondary), controls->shaders],
         @[control_label(@"Fullscreen", 11, NSFontWeightRegular, secondary), controls->fullscreen],
         @[control_label(@"Performance", 11, NSFontWeightRegular, secondary), controls->performance],
         @[control_label(@"Sound", 11, NSFontWeightRegular, secondary), controls->sound],

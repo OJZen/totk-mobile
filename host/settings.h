@@ -16,6 +16,7 @@ typedef struct {
     bool hide_performance;      // performance overlay hidden (default shown)
     int vibration;              // ZELDA_VIBRATION_* (default ON, calibrated strength)
     int render;                 // ZELDA_RENDER_* (default ORIGINAL)
+    bool shader_wait;           // wait for new shaders to compile instead of skipping their draws meanwhile (default off)
 } zelda_settings_t;
 
 zelda_settings_t zelda_settings(void);

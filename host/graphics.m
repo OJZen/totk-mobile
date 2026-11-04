@@ -10,6 +10,7 @@
 #include "shader_prep.h"
 #include "game_timing.h"
 #include "settings.h"
+#include "shader_async.h"
 #include <unistd.h>
 
 static CAMetalLayer *metal_layer;
@@ -133,6 +134,11 @@ static void apply_performance(bool shown) {
     store_settings(^(zelda_settings_t *settings) { settings->hide_performance = !shown; });
     controls_refresh();
 }
+static void apply_shader_wait(bool wait) {
+    zelda_set_shader_wait(wait);
+    store_settings(^(zelda_settings_t *settings) { settings->shader_wait = wait; });
+    controls_refresh();
+}
 static void apply_vibration(int mode) {
     gamepad_vibration_mode(mode);
     store_settings(^(zelda_settings_t *settings) { settings->vibration = mode; });
@@ -176,6 +182,7 @@ static void apply_vibration(int mode) {
 - (void)metalFX:(NSMenuItem *)item { apply_metalfx((int)item.tag); }
 - (void)renderResolution:(NSMenuItem *)item { apply_render((int)item.tag); }
 - (void)togglePerformance:(id)sender { (void)sender; apply_performance(!performance_visible()); }
+- (void)toggleShaderWait:(id)sender { (void)sender; apply_shader_wait(!zelda_settings().shader_wait); }
 - (void)toggleControls:(id)sender { (void)sender; controls_toggle(); }
 - (void)quit:(id)sender { (void)sender; [self.window performClose:nil]; }
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
@@ -188,6 +195,7 @@ static void apply_vibration(int mode) {
         return zelda_render_scale() != 0;
     }
     if (item.action == @selector(metalFX:)) item.state = zelda_settings().metalfx == item.tag ? NSControlStateValueOn : NSControlStateValueOff;
+    if (item.action == @selector(toggleShaderWait:)) item.state = zelda_settings().shader_wait ? NSControlStateValueOff : NSControlStateValueOn;
     if (item.action == @selector(togglePerformance:)) item.state = performance_visible() ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(fullScreen:))
         item.title = self.window.styleMask & NSWindowStyleMaskFullScreen ? @"Exit Full Screen" : @"Enter Full Screen";
@@ -232,6 +240,7 @@ static void install_menu(ZeldaMenu *actions) {
     }
     NSMenuItem *scale = [[NSMenuItem alloc] initWithTitle:@"MetalFX Upscaling" action:nil keyEquivalent:@""]; scale.submenu = scales;
     [view addItem:scale];
+    [view addItem:menu_item(@"Compile New Shaders in Background", @selector(toggleShaderWait:), @"", 0, actions)];
     [view addItem:menu_item(@"Performance Overlay", @selector(togglePerformance:), @"p", NSEventModifierFlagCommand, actions)];
     for (NSMenu *menu in @[app, view]) {
         NSMenuItem *holder = [[NSMenuItem alloc] initWithTitle:menu.title action:nil keyEquivalent:@""];

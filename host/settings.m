@@ -55,6 +55,9 @@ static void load_locked(void) {
     else if ([render isEqual:@"performance"]) current.render = ZELDA_RENDER_720;
     else if ([render isEqual:@"480p"]) current.render = ZELDA_RENDER_640;
     else if (render) fprintf(stderr, "SETTINGS ignored render_resolution\n");
+    id shaders = stored[@"shader_compile"];
+    if ([shaders isEqual:@"wait"] || [shaders isEqual:@"background"]) current.shader_wait = [shaders isEqual:@"wait"];
+    else if (shaders) fprintf(stderr, "SETTINGS ignored shader_compile\n");
 }
 
 zelda_settings_t zelda_settings(void) {
@@ -77,6 +80,7 @@ bool zelda_settings_store(zelda_settings_t settings) {
         next[@"sound"] = @((bool)!settings.muted); next[@"performance_overlay"] = @((bool)!settings.hide_performance);
         next[@"vibration"] = vibration_names()[(NSUInteger)settings.vibration];
         next[@"render_resolution"] = render_names()[(NSUInteger)settings.render];
+        next[@"shader_compile"] = settings.shader_wait ? @"wait" : @"background";
         NSData *data = [NSJSONSerialization dataWithJSONObject:next options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:nil];
         bool ok = data && [data writeToFile:settings_path() options:NSDataWritingAtomic error:nil];
         if (ok) { stored = next; current = settings; }

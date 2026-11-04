@@ -28,12 +28,12 @@ int main(int argc, char **argv) { @autoreleasepool {
         }
         int status; assert(waitpid(child, &status, 0) == child && WIFEXITED(status) && !WEXITSTATUS(status));
     }
-    NSData *initial = [@"{\"target_fps\": 45, \"fullscreen\": true, \"dynamic_resolution\": \"auto\", \"metalfx_upscale\": true, \"future\": {\"a\": 1}}" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *initial = [@"{\"target_fps\": 45, \"fullscreen\": true, \"dynamic_resolution\": \"auto\", \"metalfx_upscale\": true, \"shader_compile\": \"soon\", \"future\": {\"a\": 1}}" dataUsingEncoding:NSUTF8StringEncoding];
     assert([initial writeToFile:path atomically:YES]);
     zelda_settings_t settings = zelda_settings();
     // An invalid rate keeps the default; other fields still load, and the earlier boolean MetalFX switch means "window".
     assert(settings.target_fps == 60 && settings.fullscreen && settings.metalfx == ZELDA_METALFX_WINDOW);
-    assert(!settings.muted && !settings.hide_performance && settings.vibration == ZELDA_VIBRATION_ON && settings.render == ZELDA_RENDER_ORIGINAL);
+    assert(!settings.muted && !settings.hide_performance && settings.vibration == ZELDA_VIBRATION_ON && settings.render == ZELDA_RENDER_ORIGINAL && !settings.shader_wait);
     assert(!zelda_settings_valid_fps(120) && zelda_settings_valid_fps(30) && zelda_settings_valid_fps(90));
     assert(!zelda_settings_store((zelda_settings_t){.target_fps = 120}));
     assert(!zelda_settings_store((zelda_settings_t){.target_fps = 60, .metalfx = 3}));
